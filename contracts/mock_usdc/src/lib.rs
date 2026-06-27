@@ -1,7 +1,7 @@
 #![no_std]
 
 use dike_types::DikeError;
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String};
+use soroban_sdk::{contract, contractevent, contractimpl, contracttype, Address, Env, String};
 
 const MIN_TTL: u32 = 17_280;
 const EXTEND_TTL: u32 = 518_400;
@@ -13,6 +13,53 @@ pub enum DataKey {
     Balance(Address),
     Allowance(Address, Address),
     TotalSupply,
+}
+
+#[contractevent(topics = ["mint"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct Minted {
+    #[topic]
+    pub to: Address,
+    pub amount: i128,
+}
+
+#[contractevent(topics = ["burn"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct Burned {
+    #[topic]
+    pub from: Address,
+    pub amount: i128,
+}
+
+#[contractevent(topics = ["transfer"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct Transferred {
+    #[topic]
+    pub from: Address,
+    #[topic]
+    pub to: Address,
+    pub amount: i128,
+}
+
+#[contractevent(topics = ["approve"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct Approved {
+    #[topic]
+    pub from: Address,
+    #[topic]
+    pub spender: Address,
+    pub amount: i128,
+}
+
+#[contractevent(topics = ["xferfrom"], data_format = "vec")]
+#[derive(Clone)]
+pub struct TransferredFrom {
+    #[topic]
+    pub from: Address,
+    #[topic]
+    pub to: Address,
+    pub spender: Address,
+    pub amount: i128,
 }
 
 #[contract]
@@ -104,7 +151,7 @@ impl MockUSDC {
                 .checked_add(amount)
                 .ok_or(DikeError::ArithmeticError)?,
         );
-        env.events().publish((symbol_short!("mint"), to), amount);
+        Minted { to, amount }.publish(&env);
         Ok(())
     }
 
@@ -126,7 +173,7 @@ impl MockUSDC {
         env.storage()
             .instance()
             .set(&DataKey::TotalSupply, &(supply - amount));
-        env.events().publish((symbol_short!("burn"), from), amount);
+        Burned { from, amount }.publish(&env);
         Ok(())
     }
 
@@ -148,8 +195,7 @@ impl MockUSDC {
                 .checked_add(amount)
                 .ok_or(DikeError::ArithmeticError)?,
         );
-        env.events()
-            .publish((symbol_short!("transfer"), from, to), amount);
+        Transferred { from, to, amount }.publish(&env);
         Ok(())
     }
 
@@ -169,8 +215,12 @@ impl MockUSDC {
         env.storage()
             .persistent()
             .extend_ttl(&key, MIN_TTL, EXTEND_TTL);
-        env.events()
-            .publish((symbol_short!("approve"), from, spender), amount);
+        Approved {
+            from,
+            spender,
+            amount,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -215,8 +265,13 @@ impl MockUSDC {
                 .checked_add(amount)
                 .ok_or(DikeError::ArithmeticError)?,
         );
-        env.events()
-            .publish((symbol_short!("xferfrom"), from, to), (spender, amount));
+        TransferredFrom {
+            from,
+            to,
+            spender,
+            amount,
+        }
+        .publish(&env);
         Ok(())
     }
 }

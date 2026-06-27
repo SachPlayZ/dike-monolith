@@ -2,7 +2,7 @@
 
 use dike_types::{DikeError, FeeConfig};
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Symbol,
+    contract, contractevent, contractimpl, contracttype, Address, BytesN, Env, Symbol,
 };
 
 #[contracttype]
@@ -18,6 +18,68 @@ pub enum DataKey {
     PauseAuthority,
     FeeConfig,
     UpgradeHash(Symbol),
+}
+
+#[contractevent(topics = ["timelock"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct TimelockSet {
+    pub timelock: Address,
+}
+
+#[contractevent(topics = ["treas"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct TreasurySet {
+    pub treasury: Address,
+}
+
+#[contractevent(topics = ["creator"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct CreatorSet {
+    #[topic]
+    pub creator: Address,
+    pub approved: bool,
+}
+
+#[contractevent(topics = ["member"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct CouncilMemberSet {
+    #[topic]
+    pub member: Address,
+    pub approved: bool,
+}
+
+#[contractevent(topics = ["collat"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct SupportedCollateralSet {
+    #[topic]
+    pub collateral: Address,
+    pub supported: bool,
+}
+
+#[contractevent(topics = ["module"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct ModuleSet {
+    #[topic]
+    pub role: Symbol,
+    pub module: Address,
+}
+
+#[contractevent(topics = ["pauser"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct PauseAuthoritySet {
+    pub authority: Address,
+}
+
+#[contractevent(topics = ["fee_cfg"])]
+#[derive(Clone)]
+pub struct FeeConfigSet {}
+
+#[contractevent(topics = ["upgrade"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct UpgradeHashRecorded {
+    #[topic]
+    pub module_role: Symbol,
+    pub wasm_hash: BytesN<32>,
 }
 
 #[contract]
@@ -60,14 +122,14 @@ impl DikeGovernance {
     pub fn set_timelock(env: Env, timelock: Address) -> Result<(), DikeError> {
         require_admin(&env)?;
         env.storage().instance().set(&DataKey::Timelock, &timelock);
-        env.events().publish((symbol_short!("timelock"),), timelock);
+        TimelockSet { timelock }.publish(&env);
         Ok(())
     }
 
     pub fn apply_treasury(env: Env, treasury: Address) -> Result<(), DikeError> {
         require_timelock(&env)?;
         env.storage().instance().set(&DataKey::Treasury, &treasury);
-        env.events().publish((symbol_short!("treas"),), treasury);
+        TreasurySet { treasury }.publish(&env);
         Ok(())
     }
 
@@ -76,8 +138,7 @@ impl DikeGovernance {
         env.storage()
             .instance()
             .set(&DataKey::Creator(creator.clone()), &approved);
-        env.events()
-            .publish((symbol_short!("creator"), creator), approved);
+        CreatorSet { creator, approved }.publish(&env);
         Ok(())
     }
 
@@ -90,8 +151,7 @@ impl DikeGovernance {
         env.storage()
             .instance()
             .set(&DataKey::CouncilMember(member.clone()), &approved);
-        env.events()
-            .publish((symbol_short!("member"), member), approved);
+        CouncilMemberSet { member, approved }.publish(&env);
         Ok(())
     }
 
@@ -105,8 +165,11 @@ impl DikeGovernance {
             &DataKey::SupportedCollateral(collateral.clone()),
             &supported,
         );
-        env.events()
-            .publish((symbol_short!("collat"), collateral), supported);
+        SupportedCollateralSet {
+            collateral,
+            supported,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -115,8 +178,7 @@ impl DikeGovernance {
         env.storage()
             .instance()
             .set(&DataKey::Module(role.clone()), &module);
-        env.events()
-            .publish((symbol_short!("module"), role), module);
+        ModuleSet { role, module }.publish(&env);
         Ok(())
     }
 
@@ -125,7 +187,7 @@ impl DikeGovernance {
         env.storage()
             .instance()
             .set(&DataKey::PauseAuthority, &authority);
-        env.events().publish((symbol_short!("pauser"),), authority);
+        PauseAuthoritySet { authority }.publish(&env);
         Ok(())
     }
 
@@ -137,7 +199,7 @@ impl DikeGovernance {
             return Err(DikeError::InvalidInput);
         }
         env.storage().instance().set(&DataKey::FeeConfig, &config);
-        env.events().publish((symbol_short!("fee_cfg"),), ());
+        FeeConfigSet {}.publish(&env);
         Ok(())
     }
 
@@ -150,8 +212,11 @@ impl DikeGovernance {
         env.storage()
             .instance()
             .set(&DataKey::UpgradeHash(module_role.clone()), &wasm_hash);
-        env.events()
-            .publish((symbol_short!("upgrade"), module_role), wasm_hash);
+        UpgradeHashRecorded {
+            module_role,
+            wasm_hash,
+        }
+        .publish(&env);
         Ok(())
     }
 

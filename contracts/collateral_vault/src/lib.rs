@@ -3,8 +3,8 @@
 use dike_math::{checked_add, checked_sub, invalid_refund};
 use dike_types::{DikeError, MarketId, Outcome, RequestId, VaultAccounting};
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, token::Client as TokenClient, Address, Env,
-    Symbol,
+    contract, contractevent, contractimpl, contracttype, symbol_short,
+    token::Client as TokenClient, Address, Env, Symbol,
 };
 
 const MIN_TTL: u32 = 17_280;
@@ -20,6 +20,88 @@ pub enum DataKey {
     Bond(RequestId, Address, bool),
     Redeemed(MarketId, Address, Outcome),
     Paused,
+}
+
+#[contractevent(topics = ["role"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct RoleSet {
+    #[topic]
+    pub role: Symbol,
+    pub module: Address,
+}
+
+#[contractevent(topics = ["treas"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct TreasurySet {
+    pub treasury: Address,
+}
+
+#[contractevent(topics = ["pause"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct Paused {
+    pub paused: bool,
+}
+
+#[contractevent(topics = ["deposit"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct MarketDeposit {
+    #[topic]
+    pub market_id: MarketId,
+    #[topic]
+    pub user: Address,
+    pub amount: i128,
+}
+
+#[contractevent(topics = ["release"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct MergeRelease {
+    #[topic]
+    pub market_id: MarketId,
+    #[topic]
+    pub user: Address,
+    pub amount: i128,
+}
+
+#[contractevent(topics = ["redeem"], data_format = "vec")]
+#[derive(Clone)]
+pub struct Redeemed {
+    #[topic]
+    pub market_id: MarketId,
+    #[topic]
+    pub user: Address,
+    pub outcome: Outcome,
+    pub payout: i128,
+}
+
+#[contractevent(topics = ["bond"], data_format = "vec")]
+#[derive(Clone)]
+pub struct BondLocked {
+    #[topic]
+    pub request_id: RequestId,
+    #[topic]
+    pub user: Address,
+    pub amount: i128,
+    pub is_dispute: bool,
+}
+
+#[contractevent(topics = ["bond_rel"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct BondReleased {
+    #[topic]
+    pub request_id: RequestId,
+    #[topic]
+    pub user: Address,
+    pub amount: i128,
+}
+
+#[contractevent(topics = ["fee"], data_format = "vec")]
+#[derive(Clone)]
+pub struct FeesCollected {
+    #[topic]
+    pub market_id: MarketId,
+    pub lp_fee: i128,
+    pub protocol_fee: i128,
+    pub cod_fee: i128,
 }
 
 #[contract]
@@ -125,7 +207,7 @@ impl CollateralVault {
         env.storage()
             .instance()
             .set(&DataKey::Role(role.clone()), &module);
-        env.events().publish((symbol_short!("role"), role), module);
+        RoleSet { role, module }.publish(&env);
         bump(&env);
         Ok(())
     }
@@ -133,7 +215,7 @@ impl CollateralVault {
     pub fn set_treasury(env: Env, treasury: Address) -> Result<(), DikeError> {
         require_role(&env, symbol_short!("gov"))?;
         env.storage().instance().set(&DataKey::Treasury, &treasury);
-        env.events().publish((symbol_short!("treas"),), treasury);
+        TreasurySet { treasury }.publish(&env);
         bump(&env);
         Ok(())
     }
@@ -141,7 +223,7 @@ impl CollateralVault {
     pub fn pause(env: Env, paused: bool) -> Result<(), DikeError> {
         require_role(&env, symbol_short!("gov"))?;
         env.storage().instance().set(&DataKey::Paused, &paused);
-        env.events().publish((symbol_short!("pause"),), paused);
+        Paused { paused }.publish(&env);
         bump(&env);
         Ok(())
     }
@@ -171,8 +253,12 @@ impl CollateralVault {
         accounting.collateral_backing = checked_add(accounting.collateral_backing, amount)?;
         accounting.refundable = checked_add(accounting.refundable, amount)?;
         write_accounting(&env, market_id, &accounting);
-        env.events()
-            .publish((symbol_short!("deposit"), market_id, user), amount);
+        MarketDeposit {
+            market_id,
+            user,
+            amount,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -195,8 +281,12 @@ impl CollateralVault {
         accounting.refundable = checked_sub(accounting.refundable, amount)?;
         write_accounting(&env, market_id, &accounting);
         transfer_token(&env, &token, &env.current_contract_address(), &user, amount);
-        env.events()
-            .publish((symbol_short!("release"), market_id, user), amount);
+        MergeRelease {
+            market_id,
+            user,
+            amount,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -242,10 +332,13 @@ impl CollateralVault {
             write_accounting(&env, market_id, &accounting);
             transfer_token(&env, &token, &env.current_contract_address(), &user, payout);
         }
-        env.events().publish(
-            (symbol_short!("redeem"), market_id, user),
-            (redeemed_outcome, payout),
-        );
+        Redeemed {
+            market_id,
+            user,
+            outcome: redeemed_outcome,
+            payout,
+        }
+        .publish(&env);
         Ok(payout)
     }
 
@@ -278,10 +371,13 @@ impl CollateralVault {
             accounting.proposal_bonds = checked_add(accounting.proposal_bonds, amount)?;
         }
         write_accounting(&env, market_id, &accounting);
-        env.events().publish(
-            (symbol_short!("bond"), request_id, user),
-            (amount, is_dispute),
-        );
+        BondLocked {
+            request_id,
+            user,
+            amount,
+            is_dispute,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -310,8 +406,12 @@ impl CollateralVault {
             .persistent()
             .set(&bond_key, &checked_sub(locked, amount)?);
         transfer_token(&env, &token, &env.current_contract_address(), &user, amount);
-        env.events()
-            .publish((symbol_short!("bond_rel"), request_id, user), amount);
+        BondReleased {
+            request_id,
+            user,
+            amount,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -328,10 +428,13 @@ impl CollateralVault {
         accounting.protocol_fees = checked_add(accounting.protocol_fees, protocol_fee)?;
         accounting.cod_fees = checked_add(accounting.cod_fees, cod_fee)?;
         write_accounting(&env, market_id, &accounting);
-        env.events().publish(
-            (symbol_short!("fee"), market_id),
-            (lp_fee, protocol_fee, cod_fee),
-        );
+        FeesCollected {
+            market_id,
+            lp_fee,
+            protocol_fee,
+            cod_fee,
+        }
+        .publish(&env);
         Ok(())
     }
 

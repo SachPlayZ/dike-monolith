@@ -5,7 +5,7 @@ use dike_types::{
     DikeError, FeeConfig, DEFAULT_COUNCIL_BOND_SHARE_BPS, DEFAULT_TREASURY_BOND_SHARE_BPS,
     DEFAULT_WINNER_BOND_SHARE_BPS,
 };
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env};
+use soroban_sdk::{contract, contractevent, contractimpl, contracttype, Address, Env};
 
 #[contracttype]
 #[derive(Clone)]
@@ -18,6 +18,25 @@ pub enum DataKey {
     WinnerBondShareBps,
     CouncilBondShareBps,
     TreasuryBondShareBps,
+}
+
+#[contractevent(topics = ["fee_cfg"])]
+#[derive(Clone)]
+pub struct FeeConfigSet {}
+
+#[contractevent(topics = ["bondcfg"], data_format = "vec")]
+#[derive(Clone)]
+pub struct BondConfigSet {
+    pub minimum_bond: i128,
+    pub bond_bps: u32,
+}
+
+#[contractevent(topics = ["bondspl"], data_format = "vec")]
+#[derive(Clone)]
+pub struct BondSplitSet {
+    pub winner_bps: u32,
+    pub council_bps: u32,
+    pub treasury_bps: u32,
 }
 
 #[contract]
@@ -84,7 +103,7 @@ impl FeeManager {
         require_governance(&env)?;
         validate_fee_config(&config)?;
         env.storage().instance().set(&DataKey::Config, &config);
-        env.events().publish((symbol_short!("fee_cfg"),), ());
+        FeeConfigSet {}.publish(&env);
         Ok(())
     }
 
@@ -97,8 +116,11 @@ impl FeeManager {
             .instance()
             .set(&DataKey::MinBond, &minimum_bond);
         env.storage().instance().set(&DataKey::BondBps, &bond_bps);
-        env.events()
-            .publish((symbol_short!("bondcfg"),), (minimum_bond, bond_bps));
+        BondConfigSet {
+            minimum_bond,
+            bond_bps,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -121,10 +143,12 @@ impl FeeManager {
         env.storage()
             .instance()
             .set(&DataKey::TreasuryBondShareBps, &treasury_bps);
-        env.events().publish(
-            (symbol_short!("bondspl"),),
-            (winner_bps, council_bps, treasury_bps),
-        );
+        BondSplitSet {
+            winner_bps,
+            council_bps,
+            treasury_bps,
+        }
+        .publish(&env);
         Ok(())
     }
 

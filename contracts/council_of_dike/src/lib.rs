@@ -4,7 +4,8 @@ use dike_types::{
     CaseId, CouncilCase, CouncilCaseStatus, DikeError, MarketId, OpenCaseConfig, Outcome, RequestId,
 };
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, String, Symbol,
+    contract, contractevent, contractimpl, contracttype, symbol_short, Address, BytesN, Env,
+    String, Symbol,
 };
 
 const MIN_TTL: u32 = 17_280;
@@ -23,6 +24,74 @@ pub enum DataKey {
     Reveal(CaseId, Address),
     Claimed(CaseId, Address),
     Paused,
+}
+
+#[contractevent(topics = ["role"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct RoleSet {
+    #[topic]
+    pub role: Symbol,
+    pub module: Address,
+}
+
+#[contractevent(topics = ["member"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct MemberSet {
+    #[topic]
+    pub member: Address,
+    pub approved: bool,
+}
+
+#[contractevent(topics = ["pause"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct Paused {
+    pub paused: bool,
+}
+
+#[contractevent(topics = ["case"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct CaseOpened {
+    #[topic]
+    pub request_id: RequestId,
+    pub case_id: CaseId,
+}
+
+#[contractevent(topics = ["commit"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct VoteCommitted {
+    #[topic]
+    pub case_id: CaseId,
+    #[topic]
+    pub voter: Address,
+    pub commitment: BytesN<32>,
+}
+
+#[contractevent(topics = ["reveal"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct VoteRevealed {
+    #[topic]
+    pub case_id: CaseId,
+    #[topic]
+    pub voter: Address,
+    pub outcome: Outcome,
+}
+
+#[contractevent(topics = ["casefin"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct CaseFinalized {
+    #[topic]
+    pub case_id: CaseId,
+    pub outcome: Outcome,
+}
+
+#[contractevent(topics = ["reward"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct RewardClaimed {
+    #[topic]
+    pub case_id: CaseId,
+    #[topic]
+    pub voter: Address,
+    pub correct: bool,
 }
 
 #[contract]
@@ -104,7 +173,7 @@ impl CouncilOfDike {
         env.storage()
             .instance()
             .set(&DataKey::Role(role.clone()), &module);
-        env.events().publish((symbol_short!("role"), role), module);
+        RoleSet { role, module }.publish(&env);
         Ok(())
     }
 
@@ -113,15 +182,14 @@ impl CouncilOfDike {
         env.storage()
             .instance()
             .set(&DataKey::Member(member.clone()), &approved);
-        env.events()
-            .publish((symbol_short!("member"), member), approved);
+        MemberSet { member, approved }.publish(&env);
         Ok(())
     }
 
     pub fn pause(env: Env, paused: bool) -> Result<(), DikeError> {
         require_role(&env, symbol_short!("gov"))?;
         env.storage().instance().set(&DataKey::Paused, &paused);
-        env.events().publish((symbol_short!("pause"),), paused);
+        Paused { paused }.publish(&env);
         Ok(())
     }
 
@@ -195,8 +263,11 @@ impl CouncilOfDike {
         env.storage()
             .instance()
             .set(&DataKey::NextCaseId, &(case_id + 1));
-        env.events()
-            .publish((symbol_short!("case"), request_id), case_id);
+        CaseOpened {
+            request_id,
+            case_id,
+        }
+        .publish(&env);
         Ok(case_id)
     }
 
@@ -221,8 +292,12 @@ impl CouncilOfDike {
         env.storage()
             .persistent()
             .extend_ttl(&key, MIN_TTL, EXTEND_TTL);
-        env.events()
-            .publish((symbol_short!("commit"), case_id, voter), commitment);
+        VoteCommitted {
+            case_id,
+            voter,
+            commitment,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -263,8 +338,12 @@ impl CouncilOfDike {
             .persistent()
             .extend_ttl(&reveal_key, MIN_TTL, EXTEND_TTL);
         write_case(&env, &case_data);
-        env.events()
-            .publish((symbol_short!("reveal"), case_id, voter), outcome);
+        VoteRevealed {
+            case_id,
+            voter,
+            outcome,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -291,8 +370,7 @@ impl CouncilOfDike {
         case_data.final_outcome = outcome;
         case_data.status = CouncilCaseStatus::Finalized;
         write_case(&env, &case_data);
-        env.events()
-            .publish((symbol_short!("casefin"), case_id), outcome);
+        CaseFinalized { case_id, outcome }.publish(&env);
         Ok(outcome)
     }
 
@@ -318,8 +396,12 @@ impl CouncilOfDike {
         env.storage()
             .persistent()
             .extend_ttl(&claimed_key, MIN_TTL, EXTEND_TTL);
-        env.events()
-            .publish((symbol_short!("reward"), case_id, voter), correct);
+        RewardClaimed {
+            case_id,
+            voter,
+            correct,
+        }
+        .publish(&env);
         Ok(correct)
     }
 

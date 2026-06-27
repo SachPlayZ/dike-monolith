@@ -2,7 +2,9 @@
 
 use dike_math::{checked_add, checked_sub};
 use dike_types::{DikeError, MarketId, Outcome};
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, Symbol};
+use soroban_sdk::{
+    contract, contractevent, contractimpl, contracttype, symbol_short, Address, Env, Symbol,
+};
 
 const MIN_TTL: u32 = 17_280;
 const EXTEND_TTL: u32 = 518_400;
@@ -15,6 +17,75 @@ pub enum DataKey {
     Balance(MarketId, Address, Outcome),
     Backing(MarketId),
     Paused,
+}
+
+#[contractevent(topics = ["role"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct RoleSet {
+    #[topic]
+    pub role: Symbol,
+    pub module: Address,
+}
+
+#[contractevent(topics = ["pause"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct Paused {
+    pub paused: bool,
+}
+
+#[contractevent(topics = ["split"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct CompleteSetSplit {
+    #[topic]
+    pub market_id: MarketId,
+    #[topic]
+    pub user: Address,
+    pub amount: i128,
+}
+
+#[contractevent(topics = ["merge"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct PositionsMerged {
+    #[topic]
+    pub market_id: MarketId,
+    #[topic]
+    pub user: Address,
+    pub amount: i128,
+}
+
+#[contractevent(topics = ["pos_xfer"], data_format = "vec")]
+#[derive(Clone)]
+pub struct PositionTransferred {
+    #[topic]
+    pub market_id: MarketId,
+    #[topic]
+    pub from: Address,
+    #[topic]
+    pub to: Address,
+    pub outcome: Outcome,
+    pub amount: i128,
+}
+
+#[contractevent(topics = ["burn"], data_format = "vec")]
+#[derive(Clone)]
+pub struct PositionBurned {
+    #[topic]
+    pub market_id: MarketId,
+    #[topic]
+    pub owner: Address,
+    pub outcome: Outcome,
+    pub amount: i128,
+}
+
+#[contractevent(topics = ["losebrn"], data_format = "vec")]
+#[derive(Clone)]
+pub struct LosingPositionBurned {
+    #[topic]
+    pub market_id: MarketId,
+    #[topic]
+    pub owner: Address,
+    pub outcome: Outcome,
+    pub amount: i128,
 }
 
 #[contract]
@@ -135,7 +206,7 @@ impl DikeConditionalTokens {
         env.storage()
             .instance()
             .set(&DataKey::Role(role.clone()), &module);
-        env.events().publish((symbol_short!("role"), role), module);
+        RoleSet { role, module }.publish(&env);
         bump(&env);
         Ok(())
     }
@@ -143,7 +214,7 @@ impl DikeConditionalTokens {
     pub fn pause(env: Env, paused: bool) -> Result<(), DikeError> {
         require_admin(&env)?;
         env.storage().instance().set(&DataKey::Paused, &paused);
-        env.events().publish((symbol_short!("pause"),), paused);
+        Paused { paused }.publish(&env);
         bump(&env);
         Ok(())
     }
@@ -161,8 +232,12 @@ impl DikeConditionalTokens {
         add_balance(&env, market_id, to.clone(), Outcome::Yes, amount)?;
         add_balance(&env, market_id, to.clone(), Outcome::No, amount)?;
         add_backing(&env, market_id, amount)?;
-        env.events()
-            .publish((symbol_short!("split"), market_id, to), amount);
+        CompleteSetSplit {
+            market_id,
+            user: to,
+            amount,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -187,8 +262,12 @@ impl DikeConditionalTokens {
         add_balance(&env, market_id, user.clone(), Outcome::Yes, amount)?;
         add_balance(&env, market_id, user.clone(), Outcome::No, amount)?;
         add_backing(&env, market_id, amount)?;
-        env.events()
-            .publish((symbol_short!("split"), market_id, user), amount);
+        CompleteSetSplit {
+            market_id,
+            user,
+            amount,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -205,8 +284,12 @@ impl DikeConditionalTokens {
         sub_balance(&env, market_id, user.clone(), Outcome::Yes, amount)?;
         sub_balance(&env, market_id, user.clone(), Outcome::No, amount)?;
         sub_backing(&env, market_id, amount)?;
-        env.events()
-            .publish((symbol_short!("merge"), market_id, user), amount);
+        PositionsMerged {
+            market_id,
+            user,
+            amount,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -224,10 +307,14 @@ impl DikeConditionalTokens {
         }
         sub_balance(&env, market_id, from.clone(), outcome, amount)?;
         add_balance(&env, market_id, to.clone(), outcome, amount)?;
-        env.events().publish(
-            (symbol_short!("pos_xfer"), market_id, from, to),
-            (outcome, amount),
-        );
+        PositionTransferred {
+            market_id,
+            from,
+            to,
+            outcome,
+            amount,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -243,8 +330,13 @@ impl DikeConditionalTokens {
             return Err(DikeError::InvalidAmount);
         }
         sub_balance(&env, market_id, owner.clone(), outcome, amount)?;
-        env.events()
-            .publish((symbol_short!("burn"), market_id, owner), (outcome, amount));
+        PositionBurned {
+            market_id,
+            owner,
+            outcome,
+            amount,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -260,10 +352,13 @@ impl DikeConditionalTokens {
             return Err(DikeError::InvalidAmount);
         }
         sub_balance(&env, market_id, owner.clone(), outcome, amount)?;
-        env.events().publish(
-            (symbol_short!("losebrn"), market_id, owner),
-            (outcome, amount),
-        );
+        LosingPositionBurned {
+            market_id,
+            owner,
+            outcome,
+            amount,
+        }
+        .publish(&env);
         Ok(())
     }
 

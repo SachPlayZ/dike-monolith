@@ -2,7 +2,8 @@
 
 use dike_types::{DikeError, MarketId, OracleStatus, Outcome, RequestId, ResolutionRequest};
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, String, Symbol,
+    contract, contractevent, contractimpl, contracttype, symbol_short, Address, BytesN, Env,
+    String, Symbol,
 };
 
 const MIN_TTL: u32 = 17_280;
@@ -17,6 +18,71 @@ pub enum DataKey {
     MarketRequest(MarketId),
     NextRequestId,
     Paused,
+}
+
+#[contractevent(topics = ["role"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct RoleSet {
+    #[topic]
+    pub role: Symbol,
+    pub module: Address,
+}
+
+#[contractevent(topics = ["pause"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct Paused {
+    pub paused: bool,
+}
+
+#[contractevent(topics = ["res_req"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct ResolutionRequested {
+    #[topic]
+    pub market_id: MarketId,
+    pub request_id: RequestId,
+}
+
+#[contractevent(topics = ["propose"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct OutcomeProposed {
+    #[topic]
+    pub request_id: RequestId,
+    #[topic]
+    pub proposer: Address,
+    pub outcome: Outcome,
+}
+
+#[contractevent(topics = ["dispute"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct OutcomeDisputed {
+    #[topic]
+    pub request_id: RequestId,
+    #[topic]
+    pub disputer: Address,
+    pub outcome: Outcome,
+}
+
+#[contractevent(topics = ["final"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct RequestFinalized {
+    #[topic]
+    pub request_id: RequestId,
+    pub outcome: Outcome,
+}
+
+#[contractevent(topics = ["escal"])]
+#[derive(Clone)]
+pub struct RequestEscalated {
+    #[topic]
+    pub request_id: RequestId,
+}
+
+#[contractevent(topics = ["cod_fin"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct CouncilOutcomeReported {
+    #[topic]
+    pub request_id: RequestId,
+    pub outcome: Outcome,
 }
 
 #[contract]
@@ -98,14 +164,14 @@ impl CODOracle {
         env.storage()
             .instance()
             .set(&DataKey::Role(role.clone()), &module);
-        env.events().publish((symbol_short!("role"), role), module);
+        RoleSet { role, module }.publish(&env);
         Ok(())
     }
 
     pub fn pause(env: Env, paused: bool) -> Result<(), DikeError> {
         require_role(&env, symbol_short!("gov"))?;
         env.storage().instance().set(&DataKey::Paused, &paused);
-        env.events().publish((symbol_short!("pause"),), paused);
+        Paused { paused }.publish(&env);
         Ok(())
     }
 
@@ -172,8 +238,11 @@ impl CODOracle {
         env.storage()
             .instance()
             .set(&DataKey::NextRequestId, &(request_id + 1));
-        env.events()
-            .publish((symbol_short!("res_req"), market_id), request_id);
+        ResolutionRequested {
+            market_id,
+            request_id,
+        }
+        .publish(&env);
         Ok(request_id)
     }
 
@@ -200,8 +269,12 @@ impl CODOracle {
         request.proposed_at = env.ledger().timestamp();
         request.status = OracleStatus::Proposed;
         write_request(&env, &request);
-        env.events()
-            .publish((symbol_short!("propose"), request_id, proposer), outcome);
+        OutcomeProposed {
+            request_id,
+            proposer,
+            outcome,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -238,10 +311,12 @@ impl CODOracle {
         request.disputed_at = env.ledger().timestamp();
         request.status = OracleStatus::Disputed;
         write_request(&env, &request);
-        env.events().publish(
-            (symbol_short!("dispute"), request_id, disputer),
-            counter_outcome,
-        );
+        OutcomeDisputed {
+            request_id,
+            disputer,
+            outcome: counter_outcome,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -263,8 +338,11 @@ impl CODOracle {
         request.final_outcome = outcome;
         request.status = OracleStatus::Finalized;
         write_request(&env, &request);
-        env.events()
-            .publish((symbol_short!("final"), request_id), outcome);
+        RequestFinalized {
+            request_id,
+            outcome,
+        }
+        .publish(&env);
         Ok(outcome)
     }
 
@@ -276,8 +354,7 @@ impl CODOracle {
         }
         request.status = OracleStatus::Escalated;
         write_request(&env, &request);
-        env.events()
-            .publish((symbol_short!("escal"), request_id), ());
+        RequestEscalated { request_id }.publish(&env);
         Ok(())
     }
 
@@ -298,8 +375,11 @@ impl CODOracle {
         request.final_outcome = outcome;
         request.status = OracleStatus::Finalized;
         write_request(&env, &request);
-        env.events()
-            .publish((symbol_short!("cod_fin"), request_id), outcome);
+        CouncilOutcomeReported {
+            request_id,
+            outcome,
+        }
+        .publish(&env);
         Ok(())
     }
 

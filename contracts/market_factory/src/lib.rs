@@ -1,7 +1,7 @@
 #![no_std]
 
 use dike_types::{DikeError, MarketConfig, MarketData, MarketId, MarketStatus};
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env};
+use soroban_sdk::{contract, contractevent, contractimpl, contracttype, Address, Env};
 
 const MIN_TTL: u32 = 17_280;
 const EXTEND_TTL: u32 = 518_400;
@@ -23,6 +23,42 @@ pub enum DataKey {
     NextMarketId,
     Market(MarketId),
     Paused,
+}
+
+#[contractevent(topics = ["modules"])]
+#[derive(Clone)]
+pub struct ModulesSet {}
+
+#[contractevent(topics = ["creator"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct CreatorSet {
+    #[topic]
+    pub creator: Address,
+    pub approved: bool,
+}
+
+#[contractevent(topics = ["collat"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct CollateralSet {
+    #[topic]
+    pub collateral: Address,
+    pub supported: bool,
+}
+
+#[contractevent(topics = ["pause"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct Paused {
+    pub paused: bool,
+}
+
+#[contractevent(topics = ["mkt_new"], data_format = "vec")]
+#[derive(Clone)]
+pub struct MarketCreated {
+    #[topic]
+    pub market_id: MarketId,
+    pub creator: Address,
+    pub initial_liquidity: i128,
+    pub opening_price_bps: u32,
 }
 
 #[contract]
@@ -159,7 +195,7 @@ impl DikeMarketFactory {
         env.storage()
             .instance()
             .set(&DataKey::FeeManager, &fee_manager);
-        env.events().publish((symbol_short!("modules"),), ());
+        ModulesSet {}.publish(&env);
         bump(&env);
         Ok(())
     }
@@ -169,8 +205,7 @@ impl DikeMarketFactory {
         env.storage()
             .instance()
             .set(&DataKey::Creator(creator.clone()), &approved);
-        env.events()
-            .publish((symbol_short!("creator"), creator), approved);
+        CreatorSet { creator, approved }.publish(&env);
         bump(&env);
         Ok(())
     }
@@ -180,8 +215,11 @@ impl DikeMarketFactory {
         env.storage()
             .instance()
             .set(&DataKey::Collateral(collateral.clone()), &supported);
-        env.events()
-            .publish((symbol_short!("collat"), collateral), supported);
+        CollateralSet {
+            collateral,
+            supported,
+        }
+        .publish(&env);
         bump(&env);
         Ok(())
     }
@@ -189,7 +227,7 @@ impl DikeMarketFactory {
     pub fn pause(env: Env, paused: bool) -> Result<(), DikeError> {
         require_governance(&env)?;
         env.storage().instance().set(&DataKey::Paused, &paused);
-        env.events().publish((symbol_short!("pause"),), paused);
+        Paused { paused }.publish(&env);
         bump(&env);
         Ok(())
     }
@@ -248,10 +286,13 @@ impl DikeMarketFactory {
         env.storage()
             .instance()
             .set(&DataKey::NextMarketId, &(market_id + 1));
-        env.events().publish(
-            (symbol_short!("mkt_new"), market_id),
-            (market.creator.clone(), initial_liquidity, opening_price_bps),
-        );
+        MarketCreated {
+            market_id,
+            creator: market.creator.clone(),
+            initial_liquidity,
+            opening_price_bps,
+        }
+        .publish(&env);
         Ok(market)
     }
 

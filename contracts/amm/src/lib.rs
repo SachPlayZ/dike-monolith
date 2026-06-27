@@ -5,7 +5,9 @@ use dike_math::{
     split_fee,
 };
 use dike_types::{DikeError, FeeConfig, MarketId, PoolData, PoolId, TradeQuote};
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, Symbol};
+use soroban_sdk::{
+    contract, contractevent, contractimpl, contracttype, symbol_short, Address, Env, Symbol,
+};
 
 const MIN_TTL: u32 = 17_280;
 const EXTEND_TTL: u32 = 518_400;
@@ -20,6 +22,85 @@ pub enum DataKey {
     LpBalance(PoolId, Address),
     NextPoolId,
     Paused,
+}
+
+#[contractevent(topics = ["role"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct RoleSet {
+    #[topic]
+    pub role: Symbol,
+    pub module: Address,
+}
+
+#[contractevent(topics = ["pause"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct Paused {
+    pub paused: bool,
+}
+
+#[contractevent(topics = ["pool"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct PoolCreated {
+    #[topic]
+    pub market_id: MarketId,
+    pub pool_id: PoolId,
+}
+
+#[contractevent(topics = ["seed"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct LiquiditySeeded {
+    #[topic]
+    pub pool_id: PoolId,
+    #[topic]
+    pub lp: Address,
+    pub amount: i128,
+}
+
+#[contractevent(topics = ["lp_add"], data_format = "vec")]
+#[derive(Clone)]
+pub struct LiquidityAdded {
+    #[topic]
+    pub pool_id: PoolId,
+    #[topic]
+    pub lp: Address,
+    pub amount: i128,
+    pub shares: i128,
+}
+
+#[contractevent(topics = ["lp_rm"], data_format = "vec")]
+#[derive(Clone)]
+pub struct LiquidityRemoved {
+    #[topic]
+    pub pool_id: PoolId,
+    #[topic]
+    pub lp: Address,
+    pub shares: i128,
+    pub yes_out: i128,
+    pub no_out: i128,
+}
+
+#[contractevent(topics = ["buy"], data_format = "vec")]
+#[derive(Clone)]
+pub struct BuyExecuted {
+    #[topic]
+    pub pool_id: PoolId,
+    #[topic]
+    pub trader: Address,
+    pub yes: bool,
+    pub amount_in: i128,
+    pub amount_out: i128,
+}
+
+#[contractevent(topics = ["sell"], data_format = "vec")]
+#[derive(Clone)]
+pub struct SellExecuted {
+    #[topic]
+    pub pool_id: PoolId,
+    #[topic]
+    pub trader: Address,
+    pub yes: bool,
+    pub amount_in: i128,
+    pub amount_out: i128,
 }
 
 #[contract]
@@ -202,10 +283,14 @@ fn buy(
         pool.yes_reserve = checked_add(pool.yes_reserve, net_in)?;
     }
     write_pool(&env, &pool);
-    env.events().publish(
-        (symbol_short!("buy"), pool_id, trader),
-        (yes, amount_in, out),
-    );
+    BuyExecuted {
+        pool_id,
+        trader,
+        yes,
+        amount_in,
+        amount_out: out,
+    }
+    .publish(&env);
     Ok(out)
 }
 
@@ -243,10 +328,14 @@ fn sell(
         pool.yes_reserve = checked_sub(pool.yes_reserve, gross_out)?;
     }
     write_pool(&env, &pool);
-    env.events().publish(
-        (symbol_short!("sell"), pool_id, trader),
-        (yes, amount_in, net_out),
-    );
+    SellExecuted {
+        pool_id,
+        trader,
+        yes,
+        amount_in,
+        amount_out: net_out,
+    }
+    .publish(&env);
     Ok(net_out)
 }
 
@@ -267,7 +356,7 @@ impl DikeAMM {
         env.storage()
             .instance()
             .set(&DataKey::Role(role.clone()), &module);
-        env.events().publish((symbol_short!("role"), role), module);
+        RoleSet { role, module }.publish(&env);
         bump(&env);
         Ok(())
     }
@@ -275,7 +364,7 @@ impl DikeAMM {
     pub fn pause(env: Env, paused: bool) -> Result<(), DikeError> {
         require_role(&env, symbol_short!("gov"))?;
         env.storage().instance().set(&DataKey::Paused, &paused);
-        env.events().publish((symbol_short!("pause"),), paused);
+        Paused { paused }.publish(&env);
         Ok(())
     }
 
@@ -306,8 +395,7 @@ impl DikeAMM {
         env.storage()
             .instance()
             .set(&DataKey::NextPoolId, &(pool_id + 1));
-        env.events()
-            .publish((symbol_short!("pool"), market_id), pool_id);
+        PoolCreated { market_id, pool_id }.publish(&env);
         Ok(pool_id)
     }
 
@@ -331,8 +419,12 @@ impl DikeAMM {
         pool.live = true;
         write_pool(&env, &pool);
         write_lp(&env, pool_id, lp.clone(), amount);
-        env.events()
-            .publish((symbol_short!("seed"), pool_id, lp), amount);
+        LiquiditySeeded {
+            pool_id,
+            lp,
+            amount,
+        }
+        .publish(&env);
         Ok(amount)
     }
 
@@ -357,8 +449,13 @@ impl DikeAMM {
         write_pool(&env, &pool);
         let current = read_lp(&env, pool_id, lp.clone());
         write_lp(&env, pool_id, lp.clone(), checked_add(current, shares)?);
-        env.events()
-            .publish((symbol_short!("lp_add"), pool_id, lp), (amount, shares));
+        LiquidityAdded {
+            pool_id,
+            lp,
+            amount,
+            shares,
+        }
+        .publish(&env);
         Ok(shares)
     }
 
@@ -384,10 +481,14 @@ impl DikeAMM {
         pool.total_lp_shares = checked_sub(pool.total_lp_shares, shares)?;
         write_pool(&env, &pool);
         write_lp(&env, pool_id, lp.clone(), checked_sub(current, shares)?);
-        env.events().publish(
-            (symbol_short!("lp_rm"), pool_id, lp),
-            (shares, yes_out, no_out),
-        );
+        LiquidityRemoved {
+            pool_id,
+            lp,
+            shares,
+            yes_out,
+            no_out,
+        }
+        .publish(&env);
         Ok((yes_out, no_out))
     }
 

@@ -4,7 +4,9 @@ use dike_types::{
     DikeError, FeeConfig, MarketConfig, MarketData, MarketId, MarketStatus, Outcome, PoolId,
     RequestId,
 };
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, Symbol};
+use soroban_sdk::{
+    contract, contractevent, contractimpl, contracttype, symbol_short, Address, Env, Symbol,
+};
 
 const MIN_TTL: u32 = 17_280;
 const EXTEND_TTL: u32 = 518_400;
@@ -18,6 +20,67 @@ pub enum DataKey {
     Market(MarketId),
     NextMarketId,
     Paused,
+}
+
+#[contractevent(topics = ["role"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct RoleSet {
+    #[topic]
+    pub role: Symbol,
+    pub module: Address,
+}
+
+#[contractevent(topics = ["collat"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct CollateralSupportSet {
+    #[topic]
+    pub collateral: Address,
+    pub supported: bool,
+}
+
+#[contractevent(topics = ["pause"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct SystemPaused {
+    pub paused: bool,
+}
+
+#[contractevent(topics = ["mkt_new"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct MarketRegistered {
+    #[topic]
+    pub market_id: MarketId,
+    pub creator: Address,
+}
+
+#[contractevent(topics = ["fee_cfg"])]
+#[derive(Clone)]
+pub struct MarketFeeConfigSet {
+    #[topic]
+    pub market_id: MarketId,
+}
+
+#[contractevent(topics = ["status"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct MarketStatusSet {
+    #[topic]
+    pub market_id: MarketId,
+    pub status: MarketStatus,
+}
+
+#[contractevent(topics = ["res_req"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct ResolutionRequested {
+    #[topic]
+    pub market_id: MarketId,
+    pub request_id: RequestId,
+}
+
+#[contractevent(topics = ["final"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct FinalOutcomeSet {
+    #[topic]
+    pub market_id: MarketId,
+    pub outcome: Outcome,
 }
 
 #[contract]
@@ -120,8 +183,11 @@ fn transition_internal(
     }
     market.status = next;
     write_market(env, &market);
-    env.events()
-        .publish((symbol_short!("status"), market_id), next);
+    MarketStatusSet {
+        market_id,
+        status: next,
+    }
+    .publish(env);
     Ok(())
 }
 
@@ -142,7 +208,7 @@ impl DikeMarketRegistry {
         env.storage()
             .instance()
             .set(&DataKey::Role(role.clone()), &module);
-        env.events().publish((symbol_short!("role"), role), module);
+        RoleSet { role, module }.publish(&env);
         bump(&env);
         Ok(())
     }
@@ -157,8 +223,11 @@ impl DikeMarketRegistry {
             &DataKey::SupportedCollateral(collateral.clone()),
             &supported,
         );
-        env.events()
-            .publish((symbol_short!("collat"), collateral), supported);
+        CollateralSupportSet {
+            collateral,
+            supported,
+        }
+        .publish(&env);
         bump(&env);
         Ok(())
     }
@@ -166,7 +235,7 @@ impl DikeMarketRegistry {
     pub fn pause_system(env: Env, paused: bool) -> Result<(), DikeError> {
         require_admin(&env)?;
         env.storage().instance().set(&DataKey::Paused, &paused);
-        env.events().publish((symbol_short!("pause"),), paused);
+        SystemPaused { paused }.publish(&env);
         bump(&env);
         Ok(())
     }
@@ -211,8 +280,11 @@ impl DikeMarketRegistry {
         env.storage()
             .instance()
             .set(&DataKey::NextMarketId, &(market_id + 1));
-        env.events()
-            .publish((symbol_short!("mkt_new"), market_id), market.creator);
+        MarketRegistered {
+            market_id,
+            creator: market.creator,
+        }
+        .publish(&env);
         bump(&env);
         Ok(market_id)
     }
@@ -229,8 +301,7 @@ impl DikeMarketRegistry {
         }
         market.fee_config = fee_config;
         write_market(&env, &market);
-        env.events()
-            .publish((symbol_short!("fee_cfg"), market_id), ());
+        MarketFeeConfigSet { market_id }.publish(&env);
         Ok(())
     }
 
@@ -242,8 +313,11 @@ impl DikeMarketRegistry {
         }
         market.status = next;
         write_market(&env, &market);
-        env.events()
-            .publish((symbol_short!("status"), market_id), next);
+        MarketStatusSet {
+            market_id,
+            status: next,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -274,8 +348,11 @@ impl DikeMarketRegistry {
         market.has_request = true;
         market.request_id = request_id;
         write_market(&env, &market);
-        env.events()
-            .publish((symbol_short!("res_req"), market_id), request_id);
+        ResolutionRequested {
+            market_id,
+            request_id,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -311,8 +388,7 @@ impl DikeMarketRegistry {
         market.final_outcome = outcome;
         market.status = MarketStatus::Resolved;
         write_market(&env, &market);
-        env.events()
-            .publish((symbol_short!("final"), market_id), outcome);
+        FinalOutcomeSet { market_id, outcome }.publish(&env);
         Ok(())
     }
 

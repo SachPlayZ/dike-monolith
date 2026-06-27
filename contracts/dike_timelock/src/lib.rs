@@ -1,7 +1,7 @@
 #![no_std]
 
 use dike_types::{ActionId, DikeError, TimelockAction, TimelockActionKind};
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env};
+use soroban_sdk::{contract, contractevent, contractimpl, contracttype, Address, BytesN, Env};
 
 const MIN_TTL: u32 = 17_280;
 const EXTEND_TTL: u32 = 518_400;
@@ -16,6 +16,37 @@ pub enum DataKey {
     GracePeriod,
     NextActionId,
     Action(ActionId),
+}
+
+#[contractevent(topics = ["roles"], data_format = "vec")]
+#[derive(Clone)]
+pub struct RolesSet {
+    pub proposer: Address,
+    pub executor: Address,
+}
+
+#[contractevent(topics = ["queued"], data_format = "vec")]
+#[derive(Clone)]
+pub struct ActionQueued {
+    #[topic]
+    pub action_id: ActionId,
+    pub kind: TimelockActionKind,
+    pub target: Address,
+}
+
+#[contractevent(topics = ["cancel"])]
+#[derive(Clone)]
+pub struct ActionCancelled {
+    #[topic]
+    pub action_id: ActionId,
+}
+
+#[contractevent(topics = ["execute"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct ActionExecuted {
+    #[topic]
+    pub action_id: ActionId,
+    pub kind: TimelockActionKind,
 }
 
 #[contract]
@@ -80,8 +111,7 @@ impl DikeTimelock {
         require_address(&env, DataKey::Admin)?;
         env.storage().instance().set(&DataKey::Proposer, &proposer);
         env.storage().instance().set(&DataKey::Executor, &executor);
-        env.events()
-            .publish((symbol_short!("roles"),), (proposer, executor));
+        RolesSet { proposer, executor }.publish(&env);
         Ok(())
     }
 
@@ -126,8 +156,12 @@ impl DikeTimelock {
         env.storage()
             .instance()
             .set(&DataKey::NextActionId, &(action_id + 1));
-        env.events()
-            .publish((symbol_short!("queued"), action_id), (kind, action.target));
+        ActionQueued {
+            action_id,
+            kind,
+            target: action.target,
+        }
+        .publish(&env);
         Ok(action_id)
     }
 
@@ -139,8 +173,7 @@ impl DikeTimelock {
         }
         action.cancelled = true;
         write_action(&env, &action);
-        env.events()
-            .publish((symbol_short!("cancel"), action_id), ());
+        ActionCancelled { action_id }.publish(&env);
         Ok(())
     }
 
@@ -166,8 +199,11 @@ impl DikeTimelock {
         }
         action.executed = true;
         write_action(&env, &action);
-        env.events()
-            .publish((symbol_short!("execute"), action_id), action.kind);
+        ActionExecuted {
+            action_id,
+            kind: action.kind,
+        }
+        .publish(&env);
         Ok(action)
     }
 
