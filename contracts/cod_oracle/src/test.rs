@@ -1,7 +1,10 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{testutils::Address as _, BytesN, Env, String};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    BytesN, Env, String,
+};
 
 #[test]
 fn finalizes_undisputed_after_window() {

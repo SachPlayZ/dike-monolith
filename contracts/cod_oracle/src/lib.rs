@@ -48,6 +48,9 @@ fn require_role(env: &Env, role: Symbol) -> Result<(), DikeError> {
 
 fn read_request(env: &Env, request_id: RequestId) -> Result<ResolutionRequest, DikeError> {
     let key = DataKey::Request(request_id);
+    if !env.storage().persistent().has(&key) {
+        return Err(DikeError::RequestNotFound);
+    }
     env.storage()
         .persistent()
         .extend_ttl(&key, MIN_TTL, EXTEND_TTL);
@@ -143,16 +146,19 @@ impl CODOracle {
             requested_at: env.ledger().timestamp(),
             bond_amount,
             dispute_window,
-            proposer: None,
-            proposed_outcome: None,
-            proposal_evidence_uri: None,
-            proposed_at: None,
-            disputer: None,
-            disputed_outcome: None,
-            dispute_evidence_uri: None,
-            disputed_at: None,
+            has_proposal: false,
+            proposer: env.current_contract_address(),
+            proposed_outcome: Outcome::unset(),
+            proposal_evidence_uri: String::from_str(&env, ""),
+            proposed_at: 0,
+            has_dispute: false,
+            disputer: env.current_contract_address(),
+            disputed_outcome: Outcome::unset(),
+            dispute_evidence_uri: String::from_str(&env, ""),
+            disputed_at: 0,
             status: OracleStatus::Requested,
-            final_outcome: None,
+            has_final_outcome: false,
+            final_outcome: Outcome::unset(),
         };
         write_request(&env, &request);
         env.storage()
@@ -187,10 +193,11 @@ impl CODOracle {
         if request.status != OracleStatus::Requested {
             return Err(DikeError::InvalidStatus);
         }
-        request.proposer = Some(proposer.clone());
-        request.proposed_outcome = Some(outcome);
-        request.proposal_evidence_uri = Some(evidence_uri);
-        request.proposed_at = Some(env.ledger().timestamp());
+        request.has_proposal = true;
+        request.proposer = proposer.clone();
+        request.proposed_outcome = outcome;
+        request.proposal_evidence_uri = evidence_uri;
+        request.proposed_at = env.ledger().timestamp();
         request.status = OracleStatus::Proposed;
         write_request(&env, &request);
         env.events()
@@ -214,17 +221,21 @@ impl CODOracle {
         if request.status != OracleStatus::Proposed {
             return Err(DikeError::InvalidStatus);
         }
-        let proposed_at = request.proposed_at.ok_or(DikeError::InvalidStatus)?;
+        if !request.has_proposal {
+            return Err(DikeError::InvalidStatus);
+        }
+        let proposed_at = request.proposed_at;
         if env.ledger().timestamp() > proposed_at + request.dispute_window {
             return Err(DikeError::DisputeWindowClosed);
         }
-        if request.proposed_outcome == Some(counter_outcome) {
+        if request.proposed_outcome == counter_outcome {
             return Err(DikeError::InvalidInput);
         }
-        request.disputer = Some(disputer.clone());
-        request.disputed_outcome = Some(counter_outcome);
-        request.dispute_evidence_uri = Some(evidence_uri);
-        request.disputed_at = Some(env.ledger().timestamp());
+        request.has_dispute = true;
+        request.disputer = disputer.clone();
+        request.disputed_outcome = counter_outcome;
+        request.dispute_evidence_uri = evidence_uri;
+        request.disputed_at = env.ledger().timestamp();
         request.status = OracleStatus::Disputed;
         write_request(&env, &request);
         env.events().publish(
@@ -240,12 +251,16 @@ impl CODOracle {
         if request.status != OracleStatus::Proposed {
             return Err(DikeError::InvalidStatus);
         }
-        let proposed_at = request.proposed_at.ok_or(DikeError::InvalidStatus)?;
+        if !request.has_proposal {
+            return Err(DikeError::InvalidStatus);
+        }
+        let proposed_at = request.proposed_at;
         if env.ledger().timestamp() <= proposed_at + request.dispute_window {
             return Err(DikeError::DisputeWindowOpen);
         }
-        let outcome = request.proposed_outcome.ok_or(DikeError::InvalidStatus)?;
-        request.final_outcome = Some(outcome);
+        let outcome = request.proposed_outcome;
+        request.has_final_outcome = true;
+        request.final_outcome = outcome;
         request.status = OracleStatus::Finalized;
         write_request(&env, &request);
         env.events()
@@ -276,10 +291,11 @@ impl CODOracle {
         if request.status != OracleStatus::Escalated {
             return Err(DikeError::InvalidStatus);
         }
-        if request.final_outcome.is_some() {
+        if request.has_final_outcome {
             return Err(DikeError::AlreadyResolved);
         }
-        request.final_outcome = Some(outcome);
+        request.has_final_outcome = true;
+        request.final_outcome = outcome;
         request.status = OracleStatus::Finalized;
         write_request(&env, &request);
         env.events()
@@ -293,6 +309,9 @@ impl CODOracle {
 
     pub fn market_request(env: Env, market_id: MarketId) -> Result<RequestId, DikeError> {
         let key = DataKey::MarketRequest(market_id);
+        if !env.storage().persistent().has(&key) {
+            return Err(DikeError::RequestNotFound);
+        }
         env.storage()
             .persistent()
             .extend_ttl(&key, MIN_TTL, EXTEND_TTL);

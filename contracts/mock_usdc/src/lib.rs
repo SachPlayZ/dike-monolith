@@ -30,6 +30,9 @@ fn require_admin(env: &Env) -> Result<(), DikeError> {
 
 fn read_balance(env: &Env, owner: Address) -> i128 {
     let key = DataKey::Balance(owner);
+    if !env.storage().persistent().has(&key) {
+        return 0;
+    }
     env.storage()
         .persistent()
         .extend_ttl(&key, MIN_TTL, EXTEND_TTL);
@@ -173,6 +176,9 @@ impl MockUSDC {
 
     pub fn allowance(env: Env, from: Address, spender: Address) -> i128 {
         let key = DataKey::Allowance(from, spender);
+        if !env.storage().persistent().has(&key) {
+            return 0;
+        }
         env.storage()
             .persistent()
             .extend_ttl(&key, MIN_TTL, EXTEND_TTL);

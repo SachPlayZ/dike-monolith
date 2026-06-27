@@ -1,7 +1,10 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{testutils::Address as _, BytesN, Env, String};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    BytesN, Env, String,
+};
 
 fn cfg(env: &Env, creator: &Address, collateral: &Address) -> MarketConfig {
     MarketConfig {

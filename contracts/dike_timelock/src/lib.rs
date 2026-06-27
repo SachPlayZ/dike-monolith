@@ -33,6 +33,9 @@ fn require_address(env: &Env, key: DataKey) -> Result<(), DikeError> {
 
 fn read_action(env: &Env, action_id: ActionId) -> Result<TimelockAction, DikeError> {
     let key = DataKey::Action(action_id);
+    if !env.storage().persistent().has(&key) {
+        return Err(DikeError::ActionConsumed);
+    }
     env.storage()
         .persistent()
         .extend_ttl(&key, MIN_TTL, EXTEND_TTL);

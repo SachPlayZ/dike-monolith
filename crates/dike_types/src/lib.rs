@@ -18,15 +18,21 @@ pub const DEFAULT_COUNCIL_BOND_SHARE_BPS: u32 = 3_000;
 pub const DEFAULT_TREASURY_BOND_SHARE_BPS: u32 = 1_000;
 
 #[contracttype]
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Outcome {
     Yes,
     No,
     Invalid,
 }
 
+impl Outcome {
+    pub fn unset() -> Self {
+        Self::Invalid
+    }
+}
+
 #[contracttype]
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MarketStatus {
     Created,
     Live,
@@ -41,7 +47,7 @@ pub enum MarketStatus {
 }
 
 #[contracttype]
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OracleStatus {
     None,
     Requested,
@@ -52,7 +58,7 @@ pub enum OracleStatus {
 }
 
 #[contracttype]
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CouncilCaseStatus {
     Opened,
     CommitPhase,
@@ -63,7 +69,7 @@ pub enum CouncilCaseStatus {
 }
 
 #[contracttype]
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TimelockActionKind {
     FeeConfig,
     Treasury,
@@ -133,11 +139,13 @@ pub struct MarketData {
     pub no_token_id: u64,
     pub expiry: u64,
     pub status: MarketStatus,
-    pub final_outcome: Option<Outcome>,
+    pub has_final_outcome: bool,
+    pub final_outcome: Outcome,
     pub pool_id: PoolId,
     pub bond_amount: i128,
     pub dispute_window: u64,
-    pub request_id: Option<RequestId>,
+    pub has_request: bool,
+    pub request_id: RequestId,
     pub created_at: u64,
     pub fee_config: FeeConfig,
 }
@@ -192,16 +200,19 @@ pub struct ResolutionRequest {
     pub requested_at: u64,
     pub bond_amount: i128,
     pub dispute_window: u64,
-    pub proposer: Option<Address>,
-    pub proposed_outcome: Option<Outcome>,
-    pub proposal_evidence_uri: Option<String>,
-    pub proposed_at: Option<u64>,
-    pub disputer: Option<Address>,
-    pub disputed_outcome: Option<Outcome>,
-    pub dispute_evidence_uri: Option<String>,
-    pub disputed_at: Option<u64>,
+    pub has_proposal: bool,
+    pub proposer: Address,
+    pub proposed_outcome: Outcome,
+    pub proposal_evidence_uri: String,
+    pub proposed_at: u64,
+    pub has_dispute: bool,
+    pub disputer: Address,
+    pub disputed_outcome: Outcome,
+    pub dispute_evidence_uri: String,
+    pub disputed_at: u64,
     pub status: OracleStatus,
-    pub final_outcome: Option<Outcome>,
+    pub has_final_outcome: bool,
+    pub final_outcome: Outcome,
 }
 
 #[contracttype]
@@ -231,7 +242,8 @@ pub struct CouncilCase {
     pub commit_end: u64,
     pub reveal_end: u64,
     pub status: CouncilCaseStatus,
-    pub final_outcome: Option<Outcome>,
+    pub has_final_outcome: bool,
+    pub final_outcome: Outcome,
     pub yes_votes: u32,
     pub no_votes: u32,
     pub invalid_votes: u32,

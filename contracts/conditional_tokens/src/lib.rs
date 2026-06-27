@@ -49,6 +49,9 @@ fn balance_key(market_id: MarketId, owner: Address, outcome: Outcome) -> DataKey
 }
 
 fn read_balance(env: &Env, key: &DataKey) -> i128 {
+    if !env.storage().persistent().has(key) {
+        return 0;
+    }
     env.storage()
         .persistent()
         .extend_ttl(key, MIN_TTL, EXTEND_TTL);
@@ -270,6 +273,9 @@ impl DikeConditionalTokens {
 
     pub fn backing(env: Env, market_id: MarketId) -> i128 {
         let key = DataKey::Backing(market_id);
+        if !env.storage().persistent().has(&key) {
+            return 0;
+        }
         env.storage()
             .persistent()
             .extend_ttl(&key, MIN_TTL, EXTEND_TTL);

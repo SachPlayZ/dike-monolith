@@ -66,6 +66,9 @@ fn require_role(env: &Env, role: Symbol) -> Result<(), DikeError> {
 
 fn read_accounting(env: &Env, market_id: MarketId) -> VaultAccounting {
     let key = DataKey::Accounting(market_id);
+    if !env.storage().persistent().has(&key) {
+        return zero_accounting();
+    }
     env.storage()
         .persistent()
         .extend_ttl(&key, MIN_TTL, EXTEND_TTL);
@@ -366,6 +369,9 @@ impl CollateralVault {
 
     pub fn redeemed(env: Env, market_id: MarketId, user: Address, outcome: Outcome) -> i128 {
         let key = DataKey::Redeemed(market_id, user, outcome);
+        if !env.storage().persistent().has(&key) {
+            return 0;
+        }
         env.storage()
             .persistent()
             .extend_ttl(&key, MIN_TTL, EXTEND_TTL);

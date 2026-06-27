@@ -51,6 +51,9 @@ fn require_role(env: &Env, role: Symbol) -> Result<(), DikeError> {
 
 fn read_pool(env: &Env, pool_id: PoolId) -> Result<PoolData, DikeError> {
     let key = DataKey::Pool(pool_id);
+    if !env.storage().persistent().has(&key) {
+        return Err(DikeError::PoolNotFound);
+    }
     env.storage()
         .persistent()
         .extend_ttl(&key, MIN_TTL, EXTEND_TTL);
@@ -70,6 +73,9 @@ fn write_pool(env: &Env, pool: &PoolData) {
 
 fn read_fee(env: &Env, pool_id: PoolId) -> FeeConfig {
     let key = DataKey::PoolFee(pool_id);
+    if !env.storage().persistent().has(&key) {
+        return FeeConfig::default();
+    }
     env.storage()
         .persistent()
         .extend_ttl(&key, MIN_TTL, EXTEND_TTL);
@@ -122,6 +128,9 @@ fn lp_key(pool_id: PoolId, owner: Address) -> DataKey {
 
 fn read_lp(env: &Env, pool_id: PoolId, owner: Address) -> i128 {
     let key = lp_key(pool_id, owner);
+    if !env.storage().persistent().has(&key) {
+        return 0;
+    }
     env.storage()
         .persistent()
         .extend_ttl(&key, MIN_TTL, EXTEND_TTL);

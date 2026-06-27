@@ -1,6 +1,8 @@
 #![no_std]
 
-use dike_types::{CaseId, CouncilCase, CouncilCaseStatus, DikeError, MarketId, OpenCaseConfig, Outcome, RequestId};
+use dike_types::{
+    CaseId, CouncilCase, CouncilCaseStatus, DikeError, MarketId, OpenCaseConfig, Outcome, RequestId,
+};
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, String, Symbol,
 };
@@ -65,6 +67,9 @@ fn require_member(env: &Env, voter: &Address) -> Result<(), DikeError> {
 
 fn read_case(env: &Env, case_id: CaseId) -> Result<CouncilCase, DikeError> {
     let key = DataKey::Case(case_id);
+    if !env.storage().persistent().has(&key) {
+        return Err(DikeError::CaseNotFound);
+    }
     env.storage()
         .persistent()
         .extend_ttl(&key, MIN_TTL, EXTEND_TTL);
@@ -136,7 +141,10 @@ impl CouncilOfDike {
         if proposer_evidence_uri.len() == 0 || disputer_evidence_uri.len() == 0 {
             return Err(DikeError::EvidenceRequired);
         }
-        if proposer_outcome == disputer_outcome || config.proposal_bond <= 0 || config.dispute_bond <= 0 {
+        if proposer_outcome == disputer_outcome
+            || config.proposal_bond <= 0
+            || config.dispute_bond <= 0
+        {
             return Err(DikeError::InvalidInput);
         }
         if env
@@ -168,7 +176,8 @@ impl CouncilOfDike {
             commit_end: now + config.commit_duration,
             reveal_end: now + config.commit_duration + config.reveal_duration,
             status: CouncilCaseStatus::CommitPhase,
-            final_outcome: None,
+            has_final_outcome: false,
+            final_outcome: Outcome::unset(),
             yes_votes: 0,
             no_votes: 0,
             invalid_votes: 0,
@@ -261,7 +270,7 @@ impl CouncilOfDike {
 
     pub fn finalize_case(env: Env, case_id: CaseId) -> Result<Outcome, DikeError> {
         let mut case_data = read_case(&env, case_id)?;
-        if case_data.final_outcome.is_some() {
+        if case_data.has_final_outcome {
             return Err(DikeError::AlreadyResolved);
         }
         if env.ledger().timestamp() <= case_data.reveal_end {
@@ -278,7 +287,8 @@ impl CouncilOfDike {
         } else {
             Outcome::Invalid
         };
-        case_data.final_outcome = Some(outcome);
+        case_data.has_final_outcome = true;
+        case_data.final_outcome = outcome;
         case_data.status = CouncilCaseStatus::Finalized;
         write_case(&env, &case_data);
         env.events()
@@ -289,7 +299,10 @@ impl CouncilOfDike {
     pub fn claim_reward(env: Env, voter: Address, case_id: CaseId) -> Result<bool, DikeError> {
         voter.require_auth();
         let case_data = read_case(&env, case_id)?;
-        let final_outcome = case_data.final_outcome.ok_or(DikeError::InvalidStatus)?;
+        if !case_data.has_final_outcome {
+            return Err(DikeError::InvalidStatus);
+        }
+        let final_outcome = case_data.final_outcome;
         let reveal_key = DataKey::Reveal(case_id, voter.clone());
         let revealed: Outcome = env
             .storage()
@@ -316,6 +329,9 @@ impl CouncilOfDike {
 
     pub fn case_for_request(env: Env, request_id: RequestId) -> Result<CaseId, DikeError> {
         let key = DataKey::RequestCase(request_id);
+        if !env.storage().persistent().has(&key) {
+            return Err(DikeError::CaseNotFound);
+        }
         env.storage()
             .persistent()
             .extend_ttl(&key, MIN_TTL, EXTEND_TTL);

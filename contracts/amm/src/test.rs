@@ -1,7 +1,10 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{testutils::Address as _, Env};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    Env,
+};
 
 #[test]
 fn seed_and_trade_updates_reserves() {

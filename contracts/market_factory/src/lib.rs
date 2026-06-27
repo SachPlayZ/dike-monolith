@@ -54,6 +54,9 @@ fn require_governance(env: &Env) -> Result<(), DikeError> {
 
 fn read_market(env: &Env, market_id: MarketId) -> Result<MarketData, DikeError> {
     let key = DataKey::Market(market_id);
+    if !env.storage().persistent().has(&key) {
+        return Err(DikeError::MarketNotFound);
+    }
     env.storage()
         .persistent()
         .extend_ttl(&key, MIN_TTL, EXTEND_TTL);
@@ -227,11 +230,13 @@ impl DikeMarketFactory {
             no_token_id,
             expiry: config.expiry,
             status: MarketStatus::Created,
-            final_outcome: None,
+            has_final_outcome: false,
+            final_outcome: dike_types::Outcome::unset(),
             pool_id,
             bond_amount: config.bond_amount,
             dispute_window: config.dispute_window,
-            request_id: None,
+            has_request: false,
+            request_id: 0,
             created_at: env.ledger().timestamp(),
             fee_config: config.fee_config,
         };

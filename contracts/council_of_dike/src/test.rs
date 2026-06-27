@@ -2,7 +2,10 @@
 
 use super::*;
 use dike_types::OpenCaseConfig;
-use soroban_sdk::{testutils::Address as _, BytesN, Env, String};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    BytesN, Env, String,
+};
 
 #[test]
 fn commit_reveal_and_finalize() {

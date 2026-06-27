@@ -49,6 +49,9 @@ fn require_role(env: &Env, role: Symbol) -> Result<Address, DikeError> {
 
 fn read_market(env: &Env, market_id: MarketId) -> Result<MarketData, DikeError> {
     let key = DataKey::Market(market_id);
+    if !env.storage().persistent().has(&key) {
+        return Err(DikeError::MarketNotFound);
+    }
     env.storage()
         .persistent()
         .extend_ttl(&key, MIN_TTL, EXTEND_TTL);
@@ -194,11 +197,13 @@ impl DikeMarketRegistry {
             no_token_id,
             expiry: config.expiry,
             status: MarketStatus::Created,
-            final_outcome: None,
+            has_final_outcome: false,
+            final_outcome: Outcome::unset(),
             pool_id,
             bond_amount: config.bond_amount,
             dispute_window: config.dispute_window,
-            request_id: None,
+            has_request: false,
+            request_id: 0,
             created_at: env.ledger().timestamp(),
             fee_config: config.fee_config,
         };
@@ -266,7 +271,8 @@ impl DikeMarketRegistry {
             return Err(DikeError::InvalidTransition);
         }
         market.status = MarketStatus::ResolutionRequested;
-        market.request_id = Some(request_id);
+        market.has_request = true;
+        market.request_id = request_id;
         write_market(&env, &market);
         env.events()
             .publish((symbol_short!("res_req"), market_id), request_id);
@@ -295,13 +301,14 @@ impl DikeMarketRegistry {
     ) -> Result<(), DikeError> {
         require_role(&env, symbol_short!("oracle"))?;
         let mut market = read_market(&env, market_id)?;
-        if market.final_outcome.is_some() || market.status == MarketStatus::Resolved {
+        if market.has_final_outcome || market.status == MarketStatus::Resolved {
             return Err(DikeError::AlreadyResolved);
         }
         if market.status != MarketStatus::Proposed && market.status != MarketStatus::CouncilVoting {
             return Err(DikeError::InvalidStatus);
         }
-        market.final_outcome = Some(outcome);
+        market.has_final_outcome = true;
+        market.final_outcome = outcome;
         market.status = MarketStatus::Resolved;
         write_market(&env, &market);
         env.events()
@@ -334,8 +341,12 @@ impl DikeMarketRegistry {
         Ok(read_market(&env, market_id)?.status)
     }
 
-    pub fn get_final_outcome(env: Env, market_id: MarketId) -> Result<Option<Outcome>, DikeError> {
-        Ok(read_market(&env, market_id)?.final_outcome)
+    pub fn get_final_outcome(env: Env, market_id: MarketId) -> Result<Outcome, DikeError> {
+        let market = read_market(&env, market_id)?;
+        if !market.has_final_outcome {
+            return Err(DikeError::InvalidStatus);
+        }
+        Ok(market.final_outcome)
     }
 }
 
