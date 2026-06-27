@@ -1,0 +1,26 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/dike_types",
+  "crates/dike_math",
+  "contracts/*",
+]
+
+[workspace.dependencies]
+soroban-sdk = "23"
+dike-types = { path = "crates/dike_types" }
+dike-math = { path = "crates/dike_math" }
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true
+
+[profile.release-with-logs]
+inherits = "release"
+debug-assertions = true
