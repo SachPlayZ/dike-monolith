@@ -105,6 +105,23 @@ fn require_timelock(env: &Env) -> Result<(), DikeError> {
     Ok(())
 }
 
+fn validate_fee_config(config: &FeeConfig) -> Result<(), DikeError> {
+    let share_total = config.lp_fee_share_bps as u64
+        + config.treasury_fee_share_bps as u64
+        + config.cod_fee_share_bps as u64;
+    if share_total != 10_000 || config.trading_fee_bps > 1_000 {
+        return Err(DikeError::InvalidInput);
+    }
+    if config.proposal_reward < 0
+        || config.dispute_reward < 0
+        || config.council_reward < 0
+        || config.creation_fee < 0
+    {
+        return Err(DikeError::InvalidAmount);
+    }
+    Ok(())
+}
+
 #[contractimpl]
 impl DikeGovernance {
     pub fn __constructor(env: Env, admin: Address, timelock: Address, treasury: Address) {
@@ -193,11 +210,7 @@ impl DikeGovernance {
 
     pub fn apply_fee_config(env: Env, config: FeeConfig) -> Result<(), DikeError> {
         require_timelock(&env)?;
-        if config.lp_fee_share_bps + config.treasury_fee_share_bps + config.cod_fee_share_bps
-            != 10_000
-        {
-            return Err(DikeError::InvalidInput);
-        }
+        validate_fee_config(&config)?;
         env.storage().instance().set(&DataKey::FeeConfig, &config);
         FeeConfigSet {}.publish(&env);
         Ok(())
@@ -259,7 +272,7 @@ impl DikeGovernance {
         env.storage()
             .instance()
             .get(&DataKey::FeeConfig)
-            .unwrap_or_else(FeeConfig::default)
+            .unwrap_or_default()
     }
 }
 

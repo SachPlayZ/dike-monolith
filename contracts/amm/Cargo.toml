@@ -15,3 +15,5 @@ dike-math = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+collateral-vault = { path = "../collateral_vault" }
+conditional-tokens = { path = "../conditional_tokens" }

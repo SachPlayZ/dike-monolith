@@ -1,6 +1,6 @@
 #![no_std]
 
-use dike_types::{ActionId, DikeError, TimelockAction, TimelockActionKind};
+use dike_types::{DikeError, TimelockAction, TimelockActionKind};
 use soroban_sdk::{contract, contractevent, contractimpl, contracttype, Address, BytesN, Env};
 
 const MIN_TTL: u32 = 17_280;
@@ -15,7 +15,7 @@ pub enum DataKey {
     MinDelay,
     GracePeriod,
     NextActionId,
-    Action(ActionId),
+    Action(u64),
 }
 
 #[contractevent(topics = ["roles"], data_format = "vec")]
@@ -29,7 +29,7 @@ pub struct RolesSet {
 #[derive(Clone)]
 pub struct ActionQueued {
     #[topic]
-    pub action_id: ActionId,
+    pub action_id: u64,
     pub kind: TimelockActionKind,
     pub target: Address,
 }
@@ -38,14 +38,14 @@ pub struct ActionQueued {
 #[derive(Clone)]
 pub struct ActionCancelled {
     #[topic]
-    pub action_id: ActionId,
+    pub action_id: u64,
 }
 
 #[contractevent(topics = ["execute"], data_format = "single-value")]
 #[derive(Clone)]
 pub struct ActionExecuted {
     #[topic]
-    pub action_id: ActionId,
+    pub action_id: u64,
     pub kind: TimelockActionKind,
 }
 
@@ -62,7 +62,7 @@ fn require_address(env: &Env, key: DataKey) -> Result<(), DikeError> {
     Ok(())
 }
 
-fn read_action(env: &Env, action_id: ActionId) -> Result<TimelockAction, DikeError> {
+fn read_action(env: &Env, action_id: u64) -> Result<TimelockAction, DikeError> {
     let key = DataKey::Action(action_id);
     if !env.storage().persistent().has(&key) {
         return Err(DikeError::ActionConsumed);
@@ -121,7 +121,7 @@ impl DikeTimelock {
         target: Address,
         payload_hash: BytesN<32>,
         requested_delay: u64,
-    ) -> Result<ActionId, DikeError> {
+    ) -> Result<u64, DikeError> {
         require_address(&env, DataKey::Proposer)?;
         let min_delay: u64 = env
             .storage()
@@ -136,26 +136,34 @@ impl DikeTimelock {
             .instance()
             .get(&DataKey::GracePeriod)
             .unwrap_or(0);
-        let action_id: ActionId = env
+        let action_id: u64 = env
             .storage()
             .instance()
             .get(&DataKey::NextActionId)
             .unwrap_or(1);
-        let execute_after = env.ledger().timestamp() + requested_delay;
+        let execute_after = env
+            .ledger()
+            .timestamp()
+            .checked_add(requested_delay)
+            .ok_or(DikeError::ArithmeticError)?;
+        let expires_at = execute_after
+            .checked_add(grace)
+            .ok_or(DikeError::ArithmeticError)?;
         let action = TimelockAction {
             id: action_id,
             kind,
             target,
             payload_hash,
             execute_after,
-            expires_at: execute_after + grace,
+            expires_at,
             executed: false,
             cancelled: false,
         };
         write_action(&env, &action);
+        let next_action_id = action_id.checked_add(1).ok_or(DikeError::ArithmeticError)?;
         env.storage()
             .instance()
-            .set(&DataKey::NextActionId, &(action_id + 1));
+            .set(&DataKey::NextActionId, &next_action_id);
         ActionQueued {
             action_id,
             kind,
@@ -165,7 +173,7 @@ impl DikeTimelock {
         Ok(action_id)
     }
 
-    pub fn cancel(env: Env, action_id: ActionId) -> Result<(), DikeError> {
+    pub fn cancel(env: Env, action_id: u64) -> Result<(), DikeError> {
         require_address(&env, DataKey::Proposer)?;
         let mut action = read_action(&env, action_id)?;
         if action.executed || action.cancelled {
@@ -179,7 +187,7 @@ impl DikeTimelock {
 
     pub fn execute(
         env: Env,
-        action_id: ActionId,
+        action_id: u64,
         payload_hash: BytesN<32>,
     ) -> Result<TimelockAction, DikeError> {
         require_address(&env, DataKey::Executor)?;
@@ -207,7 +215,7 @@ impl DikeTimelock {
         Ok(action)
     }
 
-    pub fn action(env: Env, action_id: ActionId) -> Result<TimelockAction, DikeError> {
+    pub fn action(env: Env, action_id: u64) -> Result<TimelockAction, DikeError> {
         read_action(&env, action_id)
     }
 }

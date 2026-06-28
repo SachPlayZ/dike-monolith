@@ -26,3 +26,21 @@ fn queues_and_executes_after_delay() {
     env.ledger().set_timestamp(111);
     assert!(client.execute(&action_id, &hash).executed);
 }
+
+#[test]
+fn rejects_overflowing_schedule() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(u64::MAX - 5);
+    let admin = Address::generate(&env);
+    let proposer = Address::generate(&env);
+    let executor = Address::generate(&env);
+    let target = Address::generate(&env);
+    let id = env.register(DikeTimelock, (&admin, &proposer, &executor, &1u64, &100u64));
+    let client = DikeTimelockClient::new(&env, &id);
+    let hash = BytesN::from_array(&env, &[9; 32]);
+    assert!(matches!(
+        client.try_queue(&TimelockActionKind::FeeConfig, &target, &hash, &10),
+        Err(Ok(DikeError::ArithmeticError))
+    ));
+}

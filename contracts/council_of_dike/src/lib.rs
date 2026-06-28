@@ -1,11 +1,10 @@
 #![no_std]
+#![allow(clippy::too_many_arguments)]
 
-use dike_types::{
-    CaseId, CouncilCase, CouncilCaseStatus, DikeError, MarketId, OpenCaseConfig, Outcome, RequestId,
-};
+use dike_types::{CouncilCase, CouncilCaseStatus, DikeError, OpenCaseConfig, Outcome};
 use soroban_sdk::{
-    contract, contractevent, contractimpl, contracttype, symbol_short, Address, BytesN, Env,
-    String, Symbol,
+    contract, contractclient, contractevent, contractimpl, contracttype, symbol_short, xdr::ToXdr,
+    Address, BytesN, Env, String, Symbol,
 };
 
 const MIN_TTL: u32 = 17_280;
@@ -17,12 +16,12 @@ pub enum DataKey {
     Admin,
     Role(Symbol),
     Member(Address),
-    Case(CaseId),
-    RequestCase(RequestId),
+    Case(u64),
+    RequestCase(u64),
     NextCaseId,
-    Commit(CaseId, Address),
-    Reveal(CaseId, Address),
-    Claimed(CaseId, Address),
+    Commit(u64, Address),
+    Reveal(u64, Address),
+    Claimed(u64, Address),
     Paused,
 }
 
@@ -52,15 +51,15 @@ pub struct Paused {
 #[derive(Clone)]
 pub struct CaseOpened {
     #[topic]
-    pub request_id: RequestId,
-    pub case_id: CaseId,
+    pub request_id: u64,
+    pub case_id: u64,
 }
 
 #[contractevent(topics = ["commit"], data_format = "single-value")]
 #[derive(Clone)]
 pub struct VoteCommitted {
     #[topic]
-    pub case_id: CaseId,
+    pub case_id: u64,
     #[topic]
     pub voter: Address,
     pub commitment: BytesN<32>,
@@ -70,7 +69,7 @@ pub struct VoteCommitted {
 #[derive(Clone)]
 pub struct VoteRevealed {
     #[topic]
-    pub case_id: CaseId,
+    pub case_id: u64,
     #[topic]
     pub voter: Address,
     pub outcome: Outcome,
@@ -80,7 +79,7 @@ pub struct VoteRevealed {
 #[derive(Clone)]
 pub struct CaseFinalized {
     #[topic]
-    pub case_id: CaseId,
+    pub case_id: u64,
     pub outcome: Outcome,
 }
 
@@ -88,7 +87,7 @@ pub struct CaseFinalized {
 #[derive(Clone)]
 pub struct RewardClaimed {
     #[topic]
-    pub case_id: CaseId,
+    pub case_id: u64,
     #[topic]
     pub voter: Address,
     pub correct: bool,
@@ -96,6 +95,12 @@ pub struct RewardClaimed {
 
 #[contract]
 pub struct CouncilOfDike;
+
+#[contractclient(name = "CODOracleClient")]
+pub trait CODOracle {
+    fn report_council_outcome(env: Env, request_id: u64, outcome: Outcome)
+        -> Result<(), DikeError>;
+}
 
 fn bump(env: &Env) {
     env.storage().instance().extend_ttl(MIN_TTL, EXTEND_TTL);
@@ -134,7 +139,19 @@ fn require_member(env: &Env, voter: &Address) -> Result<(), DikeError> {
     Ok(())
 }
 
-fn read_case(env: &Env, case_id: CaseId) -> Result<CouncilCase, DikeError> {
+fn ensure_not_paused(env: &Env) -> Result<(), DikeError> {
+    let paused: bool = env
+        .storage()
+        .instance()
+        .get(&DataKey::Paused)
+        .unwrap_or(false);
+    if paused {
+        return Err(DikeError::InvalidStatus);
+    }
+    Ok(())
+}
+
+fn read_case(env: &Env, case_id: u64) -> Result<CouncilCase, DikeError> {
     let key = DataKey::Case(case_id);
     if !env.storage().persistent().has(&key) {
         return Err(DikeError::CaseNotFound);
@@ -154,6 +171,18 @@ fn write_case(env: &Env, case_data: &CouncilCase) {
     env.storage()
         .persistent()
         .extend_ttl(&key, MIN_TTL, EXTEND_TTL);
+}
+
+fn vote_commitment_hash(
+    env: &Env,
+    case_id: u64,
+    voter: Address,
+    outcome: Outcome,
+    salt: BytesN<32>,
+) -> BytesN<32> {
+    env.crypto()
+        .sha256(&(case_id, voter, outcome, salt).to_xdr(env))
+        .to_bytes()
 }
 
 #[contractimpl]
@@ -195,8 +224,8 @@ impl CouncilOfDike {
 
     pub fn open_case(
         env: Env,
-        request_id: RequestId,
-        market_id: MarketId,
+        request_id: u64,
+        market_id: u64,
         proposer: Address,
         proposer_outcome: Outcome,
         proposer_evidence_uri: String,
@@ -204,14 +233,17 @@ impl CouncilOfDike {
         disputer_outcome: Outcome,
         disputer_evidence_uri: String,
         config: OpenCaseConfig,
-    ) -> Result<CaseId, DikeError> {
+    ) -> Result<u64, DikeError> {
+        ensure_not_paused(&env)?;
         require_role(&env, symbol_short!("oracle"))?;
-        if proposer_evidence_uri.len() == 0 || disputer_evidence_uri.len() == 0 {
+        if proposer_evidence_uri.is_empty() || disputer_evidence_uri.is_empty() {
             return Err(DikeError::EvidenceRequired);
         }
         if proposer_outcome == disputer_outcome
             || config.proposal_bond <= 0
             || config.dispute_bond <= 0
+            || config.commit_duration == 0
+            || config.reveal_duration == 0
         {
             return Err(DikeError::InvalidInput);
         }
@@ -222,12 +254,18 @@ impl CouncilOfDike {
         {
             return Err(DikeError::InvalidStatus);
         }
-        let case_id: CaseId = env
+        let case_id: u64 = env
             .storage()
             .instance()
             .get(&DataKey::NextCaseId)
             .unwrap_or(1);
         let now = env.ledger().timestamp();
+        let commit_end = now
+            .checked_add(config.commit_duration)
+            .ok_or(DikeError::ArithmeticError)?;
+        let reveal_end = commit_end
+            .checked_add(config.reveal_duration)
+            .ok_or(DikeError::ArithmeticError)?;
         let case_data = CouncilCase {
             id: case_id,
             request_id,
@@ -241,8 +279,8 @@ impl CouncilOfDike {
             proposal_bond: config.proposal_bond,
             dispute_bond: config.dispute_bond,
             voting_start: now,
-            commit_end: now + config.commit_duration,
-            reveal_end: now + config.commit_duration + config.reveal_duration,
+            commit_end,
+            reveal_end,
             status: CouncilCaseStatus::CommitPhase,
             has_final_outcome: false,
             final_outcome: Outcome::unset(),
@@ -260,9 +298,10 @@ impl CouncilOfDike {
             MIN_TTL,
             EXTEND_TTL,
         );
+        let next_case_id = case_id.checked_add(1).ok_or(DikeError::ArithmeticError)?;
         env.storage()
             .instance()
-            .set(&DataKey::NextCaseId, &(case_id + 1));
+            .set(&DataKey::NextCaseId, &next_case_id);
         CaseOpened {
             request_id,
             case_id,
@@ -274,9 +313,10 @@ impl CouncilOfDike {
     pub fn commit_vote(
         env: Env,
         voter: Address,
-        case_id: CaseId,
+        case_id: u64,
         commitment: BytesN<32>,
     ) -> Result<(), DikeError> {
+        ensure_not_paused(&env)?;
         require_member(&env, &voter)?;
         let case_data = read_case(&env, case_id)?;
         if case_data.status != CouncilCaseStatus::CommitPhase
@@ -304,10 +344,11 @@ impl CouncilOfDike {
     pub fn reveal_vote(
         env: Env,
         voter: Address,
-        case_id: CaseId,
+        case_id: u64,
         outcome: Outcome,
-        commitment: BytesN<32>,
+        salt: BytesN<32>,
     ) -> Result<(), DikeError> {
+        ensure_not_paused(&env)?;
         require_member(&env, &voter)?;
         let mut case_data = read_case(&env, case_id)?;
         let now = env.ledger().timestamp();
@@ -320,7 +361,7 @@ impl CouncilOfDike {
             .persistent()
             .get(&commit_key)
             .ok_or(DikeError::VoteNotCommitted)?;
-        if stored != commitment {
+        if stored != vote_commitment_hash(&env, case_id, voter.clone(), outcome, salt) {
             return Err(DikeError::InvalidReveal);
         }
         let reveal_key = DataKey::Reveal(case_id, voter.clone());
@@ -347,7 +388,8 @@ impl CouncilOfDike {
         Ok(())
     }
 
-    pub fn finalize_case(env: Env, case_id: CaseId) -> Result<Outcome, DikeError> {
+    pub fn finalize_case(env: Env, case_id: u64) -> Result<Outcome, DikeError> {
+        ensure_not_paused(&env)?;
         let mut case_data = read_case(&env, case_id)?;
         if case_data.has_final_outcome {
             return Err(DikeError::AlreadyResolved);
@@ -374,7 +416,21 @@ impl CouncilOfDike {
         Ok(outcome)
     }
 
-    pub fn claim_reward(env: Env, voter: Address, case_id: CaseId) -> Result<bool, DikeError> {
+    pub fn finalize_and_report_case(env: Env, case_id: u64) -> Result<Outcome, DikeError> {
+        ensure_not_paused(&env)?;
+        let outcome = Self::finalize_case(env.clone(), case_id)?;
+        let case_data = read_case(&env, case_id)?;
+        let oracle: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Role(symbol_short!("oracle")))
+            .ok_or(DikeError::Unauthorized)?;
+        CODOracleClient::new(&env, &oracle).report_council_outcome(&case_data.request_id, &outcome);
+        Ok(outcome)
+    }
+
+    pub fn claim_reward(env: Env, voter: Address, case_id: u64) -> Result<bool, DikeError> {
+        ensure_not_paused(&env)?;
         voter.require_auth();
         let case_data = read_case(&env, case_id)?;
         if !case_data.has_final_outcome {
@@ -405,11 +461,11 @@ impl CouncilOfDike {
         Ok(correct)
     }
 
-    pub fn case(env: Env, case_id: CaseId) -> Result<CouncilCase, DikeError> {
+    pub fn case(env: Env, case_id: u64) -> Result<CouncilCase, DikeError> {
         read_case(&env, case_id)
     }
 
-    pub fn case_for_request(env: Env, request_id: RequestId) -> Result<CaseId, DikeError> {
+    pub fn case_for_request(env: Env, request_id: u64) -> Result<u64, DikeError> {
         let key = DataKey::RequestCase(request_id);
         if !env.storage().persistent().has(&key) {
             return Err(DikeError::CaseNotFound);
@@ -421,6 +477,16 @@ impl CouncilOfDike {
             .persistent()
             .get(&key)
             .ok_or(DikeError::CaseNotFound)
+    }
+
+    pub fn vote_commitment(
+        env: Env,
+        case_id: u64,
+        voter: Address,
+        outcome: Outcome,
+        salt: BytesN<32>,
+    ) -> BytesN<32> {
+        vote_commitment_hash(&env, case_id, voter, outcome, salt)
     }
 }
 
