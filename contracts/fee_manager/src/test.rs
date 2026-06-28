@@ -18,3 +18,13 @@ fn calculates_default_fee_split() {
     assert_eq!(cod, 20);
     assert_eq!(client.required_bond(&100_000), 1_000);
 }
+
+#[test]
+#[should_panic(expected = "invalid bond config")]
+fn constructor_rejects_invalid_bond_config() {
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let gov = Address::generate(&env);
+
+    let _id = env.register(FeeManager, (&admin, &gov, &0i128, &10_001u32));
+}

@@ -53,12 +53,21 @@ fn require_governance(env: &Env) -> Result<(), DikeError> {
 }
 
 fn validate_fee_config(config: &FeeConfig) -> Result<(), DikeError> {
-    if config.lp_fee_share_bps + config.treasury_fee_share_bps + config.cod_fee_share_bps != 10_000
-    {
+    let share_total = config.lp_fee_share_bps as u64
+        + config.treasury_fee_share_bps as u64
+        + config.cod_fee_share_bps as u64;
+    if share_total != 10_000 {
         return Err(DikeError::InvalidInput);
     }
     if config.trading_fee_bps > 1_000 {
         return Err(DikeError::InvalidInput);
+    }
+    if config.proposal_reward < 0
+        || config.dispute_reward < 0
+        || config.council_reward < 0
+        || config.creation_fee < 0
+    {
+        return Err(DikeError::InvalidAmount);
     }
     Ok(())
 }
@@ -74,6 +83,9 @@ impl FeeManager {
     ) {
         if env.storage().instance().has(&DataKey::Admin) {
             panic!("already initialized");
+        }
+        if minimum_bond <= 0 || bond_bps > 10_000 {
+            panic!("invalid bond config");
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage()
@@ -131,7 +143,7 @@ impl FeeManager {
         treasury_bps: u32,
     ) -> Result<(), DikeError> {
         require_governance(&env)?;
-        if winner_bps + council_bps + treasury_bps != 10_000 {
+        if winner_bps as u64 + council_bps as u64 + treasury_bps as u64 != 10_000 {
             return Err(DikeError::InvalidInput);
         }
         env.storage()
@@ -156,7 +168,7 @@ impl FeeManager {
         env.storage()
             .instance()
             .get(&DataKey::Config)
-            .unwrap_or_else(FeeConfig::default)
+            .unwrap_or_default()
     }
 
     pub fn required_bond(env: Env, market_liquidity: i128) -> Result<i128, DikeError> {

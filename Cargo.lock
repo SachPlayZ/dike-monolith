@@ -18,6 +18,8 @@ dependencies = [
 name = "amm"
 version = "0.1.0"
 dependencies = [
+ "collateral-vault",
+ "conditional-tokens",
  "dike-math",
  "dike-types",
  "soroban-sdk",
@@ -268,8 +270,11 @@ dependencies = [
 name = "cod-oracle"
 version = "0.1.0"
 dependencies = [
+ "collateral-vault",
+ "council-of-dike",
  "dike-math",
  "dike-types",
+ "market-registry",
  "soroban-sdk",
 ]
 
@@ -277,6 +282,7 @@ dependencies = [
 name = "collateral-vault"
 version = "0.1.0"
 dependencies = [
+ "conditional-tokens",
  "dike-math",
  "dike-types",
  "soroban-sdk",
@@ -966,8 +972,15 @@ dependencies = [
 name = "market-factory"
 version = "0.1.0"
 dependencies = [
+ "amm",
+ "cod-oracle",
+ "collateral-vault",
+ "conditional-tokens",
+ "council-of-dike",
  "dike-math",
  "dike-types",
+ "fee-manager",
+ "market-registry",
  "soroban-sdk",
 ]
 

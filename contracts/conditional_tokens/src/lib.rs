@@ -1,9 +1,10 @@
 #![no_std]
 
 use dike_math::{checked_add, checked_sub};
-use dike_types::{DikeError, MarketId, Outcome};
+use dike_types::{DikeError, Outcome};
 use soroban_sdk::{
-    contract, contractevent, contractimpl, contracttype, symbol_short, Address, Env, Symbol,
+    contract, contractclient, contractevent, contractimpl, contracttype, symbol_short, Address,
+    Env, Symbol,
 };
 
 const MIN_TTL: u32 = 17_280;
@@ -14,8 +15,8 @@ const EXTEND_TTL: u32 = 518_400;
 pub enum DataKey {
     Admin,
     Role(Symbol),
-    Balance(MarketId, Address, Outcome),
-    Backing(MarketId),
+    Balance(u64, Address, Outcome),
+    Backing(u64),
     Paused,
 }
 
@@ -37,7 +38,7 @@ pub struct Paused {
 #[derive(Clone)]
 pub struct CompleteSetSplit {
     #[topic]
-    pub market_id: MarketId,
+    pub market_id: u64,
     #[topic]
     pub user: Address,
     pub amount: i128,
@@ -47,7 +48,7 @@ pub struct CompleteSetSplit {
 #[derive(Clone)]
 pub struct PositionsMerged {
     #[topic]
-    pub market_id: MarketId,
+    pub market_id: u64,
     #[topic]
     pub user: Address,
     pub amount: i128,
@@ -57,7 +58,7 @@ pub struct PositionsMerged {
 #[derive(Clone)]
 pub struct PositionTransferred {
     #[topic]
-    pub market_id: MarketId,
+    pub market_id: u64,
     #[topic]
     pub from: Address,
     #[topic]
@@ -70,7 +71,7 @@ pub struct PositionTransferred {
 #[derive(Clone)]
 pub struct PositionBurned {
     #[topic]
-    pub market_id: MarketId,
+    pub market_id: u64,
     #[topic]
     pub owner: Address,
     pub outcome: Outcome,
@@ -81,7 +82,7 @@ pub struct PositionBurned {
 #[derive(Clone)]
 pub struct LosingPositionBurned {
     #[topic]
-    pub market_id: MarketId,
+    pub market_id: u64,
     #[topic]
     pub owner: Address,
     pub outcome: Outcome,
@@ -90,6 +91,17 @@ pub struct LosingPositionBurned {
 
 #[contract]
 pub struct DikeConditionalTokens;
+
+#[contractclient(name = "DikeVaultClient")]
+pub trait DikeVault {
+    fn assert_position_transfer_allowed(
+        env: Env,
+        from: Address,
+        market_id: u64,
+        outcome: Outcome,
+        amount: i128,
+    ) -> Result<(), DikeError>;
+}
 
 fn bump(env: &Env) {
     env.storage().instance().extend_ttl(MIN_TTL, EXTEND_TTL);
@@ -115,7 +127,14 @@ fn require_role(env: &Env, role: Symbol) -> Result<(), DikeError> {
     Ok(())
 }
 
-fn balance_key(market_id: MarketId, owner: Address, outcome: Outcome) -> DataKey {
+fn read_role(env: &Env, role: Symbol) -> Result<Address, DikeError> {
+    env.storage()
+        .instance()
+        .get(&DataKey::Role(role))
+        .ok_or(DikeError::Unauthorized)
+}
+
+fn balance_key(market_id: u64, owner: Address, outcome: Outcome) -> DataKey {
     DataKey::Balance(market_id, owner, outcome)
 }
 
@@ -138,7 +157,7 @@ fn write_balance(env: &Env, key: &DataKey, amount: i128) {
 
 fn add_balance(
     env: &Env,
-    market_id: MarketId,
+    market_id: u64,
     owner: Address,
     outcome: Outcome,
     amount: i128,
@@ -151,7 +170,7 @@ fn add_balance(
 
 fn sub_balance(
     env: &Env,
-    market_id: MarketId,
+    market_id: u64,
     owner: Address,
     outcome: Outcome,
     amount: i128,
@@ -165,7 +184,7 @@ fn sub_balance(
     Ok(())
 }
 
-fn add_backing(env: &Env, market_id: MarketId, delta: i128) -> Result<(), DikeError> {
+fn add_backing(env: &Env, market_id: u64, delta: i128) -> Result<(), DikeError> {
     let key = DataKey::Backing(market_id);
     let current = env.storage().persistent().get(&key).unwrap_or(0);
     let next = checked_add(current, delta)?;
@@ -176,7 +195,7 @@ fn add_backing(env: &Env, market_id: MarketId, delta: i128) -> Result<(), DikeEr
     Ok(())
 }
 
-fn sub_backing(env: &Env, market_id: MarketId, delta: i128) -> Result<(), DikeError> {
+fn sub_backing(env: &Env, market_id: u64, delta: i128) -> Result<(), DikeError> {
     let key = DataKey::Backing(market_id);
     let current = env.storage().persistent().get(&key).unwrap_or(0);
     if current < delta {
@@ -222,10 +241,10 @@ impl DikeConditionalTokens {
     pub fn mint_complete_set(
         env: Env,
         to: Address,
-        market_id: MarketId,
+        market_id: u64,
         amount: i128,
     ) -> Result<(), DikeError> {
-        require_role(&env, symbol_short!("vault"))?;
+        require_role(&env, symbol_short!("amm"))?;
         if amount <= 0 {
             return Err(DikeError::InvalidAmount);
         }
@@ -244,10 +263,10 @@ impl DikeConditionalTokens {
     pub fn split_position(
         env: Env,
         user: Address,
-        market_id: MarketId,
+        market_id: u64,
         amount: i128,
     ) -> Result<(), DikeError> {
-        user.require_auth();
+        require_role(&env, symbol_short!("vault"))?;
         if amount <= 0 {
             return Err(DikeError::InvalidAmount);
         }
@@ -274,10 +293,10 @@ impl DikeConditionalTokens {
     pub fn merge_positions(
         env: Env,
         user: Address,
-        market_id: MarketId,
+        market_id: u64,
         amount: i128,
     ) -> Result<(), DikeError> {
-        user.require_auth();
+        require_role(&env, symbol_short!("amm"))?;
         if amount <= 0 {
             return Err(DikeError::InvalidAmount);
         }
@@ -297,7 +316,7 @@ impl DikeConditionalTokens {
         env: Env,
         from: Address,
         to: Address,
-        market_id: MarketId,
+        market_id: u64,
         outcome: Outcome,
         amount: i128,
     ) -> Result<(), DikeError> {
@@ -305,6 +324,9 @@ impl DikeConditionalTokens {
         if amount <= 0 {
             return Err(DikeError::InvalidAmount);
         }
+        let vault = read_role(&env, symbol_short!("vault"))?;
+        DikeVaultClient::new(&env, &vault)
+            .assert_position_transfer_allowed(&from, &market_id, &outcome, &amount);
         sub_balance(&env, market_id, from.clone(), outcome, amount)?;
         add_balance(&env, market_id, to.clone(), outcome, amount)?;
         PositionTransferred {
@@ -321,7 +343,7 @@ impl DikeConditionalTokens {
     pub fn burn_for_redeem(
         env: Env,
         owner: Address,
-        market_id: MarketId,
+        market_id: u64,
         outcome: Outcome,
         amount: i128,
     ) -> Result<(), DikeError> {
@@ -343,7 +365,7 @@ impl DikeConditionalTokens {
     pub fn burn_losing(
         env: Env,
         owner: Address,
-        market_id: MarketId,
+        market_id: u64,
         outcome: Outcome,
         amount: i128,
     ) -> Result<(), DikeError> {
@@ -362,11 +384,11 @@ impl DikeConditionalTokens {
         Ok(())
     }
 
-    pub fn balance(env: Env, owner: Address, market_id: MarketId, outcome: Outcome) -> i128 {
+    pub fn balance(env: Env, owner: Address, market_id: u64, outcome: Outcome) -> i128 {
         read_balance(&env, &balance_key(market_id, owner, outcome))
     }
 
-    pub fn backing(env: Env, market_id: MarketId) -> i128 {
+    pub fn backing(env: Env, market_id: u64) -> i128 {
         let key = DataKey::Backing(market_id);
         if !env.storage().persistent().has(&key) {
             return 0;

@@ -2,12 +2,6 @@
 
 use soroban_sdk::{contracterror, contracttype, Address, BytesN, String};
 
-pub type MarketId = u64;
-pub type PoolId = u64;
-pub type RequestId = u64;
-pub type CaseId = u64;
-pub type ActionId = u64;
-
 pub const BPS_DENOMINATOR: i128 = 10_000;
 pub const DEFAULT_TRADE_FEE_BPS: u32 = 200;
 pub const DEFAULT_LP_FEE_SHARE_BPS: u32 = 7_000;
@@ -16,6 +10,7 @@ pub const DEFAULT_COD_FEE_SHARE_BPS: u32 = 1_000;
 pub const DEFAULT_WINNER_BOND_SHARE_BPS: u32 = 6_000;
 pub const DEFAULT_COUNCIL_BOND_SHARE_BPS: u32 = 3_000;
 pub const DEFAULT_TREASURY_BOND_SHARE_BPS: u32 = 1_000;
+pub const DEFAULT_CHILD_COLLATERAL_BPS: u32 = 6_000;
 
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -94,8 +89,8 @@ pub struct FeeConfig {
     pub creation_fee: i128,
 }
 
-impl FeeConfig {
-    pub fn default() -> Self {
+impl Default for FeeConfig {
+    fn default() -> Self {
         Self {
             trading_fee_bps: DEFAULT_TRADE_FEE_BPS,
             lp_fee_share_bps: DEFAULT_LP_FEE_SHARE_BPS,
@@ -128,7 +123,7 @@ pub struct MarketConfig {
 #[contracttype]
 #[derive(Clone)]
 pub struct MarketData {
-    pub id: MarketId,
+    pub id: u64,
     pub question: String,
     pub question_hash: BytesN<32>,
     pub rules_uri: String,
@@ -141,11 +136,11 @@ pub struct MarketData {
     pub status: MarketStatus,
     pub has_final_outcome: bool,
     pub final_outcome: Outcome,
-    pub pool_id: PoolId,
+    pub pool_id: u64,
     pub bond_amount: i128,
     pub dispute_window: u64,
     pub has_request: bool,
-    pub request_id: RequestId,
+    pub request_id: u64,
     pub created_at: u64,
     pub fee_config: FeeConfig,
 }
@@ -156,6 +151,9 @@ pub struct VaultAccounting {
     pub total_deposited: i128,
     pub collateral_backing: i128,
     pub amm_collateral: i128,
+    pub child_collateral_issued: i128,
+    pub child_collateral_repaid: i128,
+    pub child_collateral_defaulted: i128,
     pub redeemed: i128,
     pub protocol_fees: i128,
     pub lp_fees: i128,
@@ -168,8 +166,8 @@ pub struct VaultAccounting {
 #[contracttype]
 #[derive(Clone)]
 pub struct PoolData {
-    pub id: PoolId,
-    pub market_id: MarketId,
+    pub id: u64,
+    pub market_id: u64,
     pub yes_reserve: i128,
     pub no_reserve: i128,
     pub total_lp_shares: i128,
@@ -192,8 +190,8 @@ pub struct TradeQuote {
 #[contracttype]
 #[derive(Clone)]
 pub struct ResolutionRequest {
-    pub id: RequestId,
-    pub market_id: MarketId,
+    pub id: u64,
+    pub market_id: u64,
     pub question_hash: BytesN<32>,
     pub rules_uri: String,
     pub expiry: u64,
@@ -227,9 +225,9 @@ pub struct OpenCaseConfig {
 #[contracttype]
 #[derive(Clone)]
 pub struct CouncilCase {
-    pub id: CaseId,
-    pub request_id: RequestId,
-    pub market_id: MarketId,
+    pub id: u64,
+    pub request_id: u64,
+    pub market_id: u64,
     pub proposer: Address,
     pub proposer_outcome: Outcome,
     pub proposer_evidence_uri: String,
@@ -253,7 +251,7 @@ pub struct CouncilCase {
 #[contracttype]
 #[derive(Clone)]
 pub struct TimelockAction {
-    pub id: ActionId,
+    pub id: u64,
     pub kind: TimelockActionKind,
     pub target: Address,
     pub payload_hash: BytesN<32>,
@@ -299,4 +297,7 @@ pub enum DikeError {
     UnsupportedCollateral = 30,
     CreatorNotApproved = 31,
     ArithmeticError = 32,
+    ChainDepthExceeded = 33,
+    ChildCollateralLimitExceeded = 34,
+    EncumberedPosition = 35,
 }

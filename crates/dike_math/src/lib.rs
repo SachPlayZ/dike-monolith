@@ -25,6 +25,13 @@ pub fn bps(amount: i128, rate_bps: u32) -> Result<i128, DikeError> {
     checked_div(checked_mul(amount, rate_bps as i128)?, BPS_DENOMINATOR)
 }
 
+pub fn collateral_limit(amount: i128, collateral_bps: u32) -> Result<i128, DikeError> {
+    if amount < 0 {
+        return Err(DikeError::InvalidAmount);
+    }
+    bps(amount, collateral_bps)
+}
+
 pub fn required_bond(
     minimum_bond: i128,
     market_liquidity: i128,
@@ -61,6 +68,20 @@ pub fn quote_buy(
     checked_sub(outcome_reserve, new_outcome)
 }
 
+pub fn quote_buy_complete_set(
+    outcome_reserve: i128,
+    opposite_reserve: i128,
+    net_in: i128,
+) -> Result<i128, DikeError> {
+    if outcome_reserve <= 0 || opposite_reserve <= 0 || net_in <= 0 {
+        return Err(DikeError::InvalidAmount);
+    }
+    let k = checked_mul(outcome_reserve, opposite_reserve)?;
+    let new_opposite = checked_add(opposite_reserve, net_in)?;
+    let new_outcome = checked_div(k, new_opposite)?;
+    checked_sub(checked_add(outcome_reserve, net_in)?, new_outcome)
+}
+
 pub fn quote_sell(
     outcome_reserve: i128,
     opposite_reserve: i128,
@@ -84,5 +105,21 @@ pub fn average_price_bps(amount_in: i128, amount_out: i128) -> Result<u32, DikeE
         return Err(DikeError::InvalidAmount);
     }
     let price = checked_div(checked_mul(amount_in, BPS_DENOMINATOR)?, amount_out)?;
+    if price > u32::MAX as i128 {
+        return Err(DikeError::ArithmeticError);
+    }
     Ok(price as u32)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn average_price_rejects_u32_overflow() {
+        assert_eq!(
+            average_price_bps((u32::MAX as i128) + 1, 1),
+            Err(DikeError::ArithmeticError)
+        );
+    }
 }

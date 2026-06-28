@@ -15,3 +15,10 @@ dike-math = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+amm = { path = "../amm" }
+cod-oracle = { path = "../cod_oracle" }
+collateral-vault = { path = "../collateral_vault" }
+conditional-tokens = { path = "../conditional_tokens" }
+council-of-dike = { path = "../council_of_dike" }
+fee-manager = { path = "../fee_manager" }
+market-registry = { path = "../market_registry" }

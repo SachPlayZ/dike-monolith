@@ -27,7 +27,7 @@ The local Stellar CLI template in this environment uses `soroban-sdk = "23"`. If
 
 ## Local Deployment Shape
 
-1. Deploy `mock_usdc`.
+1. Set `USDC_ISSUER` to the real USDC issuer or `COLLATERAL_CONTRACT` to the real USDC Stellar Asset Contract address. Testnet defaults to issuer `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`, which derives to SAC `CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA`.
 2. Deploy `dike_timelock`.
 3. Deploy `dike_governance`.
 4. Deploy `fee_manager`.
@@ -45,9 +45,11 @@ The local Stellar CLI template in this environment uses `soroban-sdk = "23"`. If
     - `oracle`, `council`, `gov` across oracle/council/governance.
 13. Add supported collateral and approved creators through governance/timelock for production-like flows.
 
+For local/dev-only simulations, `scripts/deploy-testnet.sh` can deploy `mock_usdc` when `ALLOW_MOCK_USDC=true` and no real collateral issuer/contract is set. Testnet/mainnet-style deployments should pass a real issuer or SAC contract; the script now fails closed instead of silently wiring a mock.
+
 ## Network Notes
 
 - Local passphrase: `Standalone Network ; February 2017`
 - Testnet passphrase: `Test SDF Network ; September 2015`
 - Production collateral should be the real USDC Stellar Asset Contract address.
-- `mock_usdc` is only for local/testnet simulation.
+- `mock_usdc` is only for local simulation and must not be wired into production-like deployments.
