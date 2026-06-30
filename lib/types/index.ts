@@ -165,6 +165,7 @@ export interface AdminState {
 
 export interface WalletPermissions {
   address: string;
+  canCreate: boolean;
   canResolve: boolean;
   canCouncil: boolean;
   canAdmin: boolean;

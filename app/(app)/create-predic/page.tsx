@@ -8,6 +8,7 @@ import { buildCreateMarket, type CreateMarketParams } from "@/lib/contracts/clie
 import { submitAndPoll, parseDikeError } from "@/lib/stellar/transaction";
 import { parseUsdc } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
+import { EmptyState } from "@/components/data-state/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent } from "@/components/ui/card";
@@ -25,6 +26,8 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { COLLATERAL_CONTRACT } from "@/lib/contracts/manifest";
 import type { TxState } from "@/lib/types";
+import { networkConfig } from "@/lib/stellar/config";
+import { toast } from "sonner";
 
 // Opening price is fixed at 5000 bps — contract rejects any other value
 const OPENING_PRICE_BPS = 5000;
@@ -51,7 +54,8 @@ function toExpiryValue(date: Date | undefined, time: string) {
 }
 
 export default function CreateMarketPage() {
-  const { address, isConnected, connect, sign } = useWallet();
+  const { address, isConnected, connect, sign, permissions, permissionsLoading, isConnecting } =
+    useWallet();
   const [txState, setTxState] = useState<TxState>({ status: "idle", hash: null, error: null });
   const [isPending, startTransition] = useTransition();
 
@@ -122,7 +126,27 @@ export default function CreateMarketPage() {
         setTxState({ status: "submitting", hash: null, error: null });
         const result = await submitAndPoll(signedXdr);
 
-        setTxState({ status: "success", hash: result.hash, error: null });
+        const explorerUrl = `https://stellar.expert/explorer/${networkConfig.network}/tx/${result.hash}`;
+        toast.success("Market Created", {
+          description: "Transaction confirmed on Stellar. Open it in Stellar Expert.",
+          action: {
+            label: "Open Stellar Expert",
+            onClick: () => window.open(explorerUrl, "_blank", "noopener,noreferrer"),
+          },
+          duration: 12000,
+        });
+
+        setTxState({ status: "idle", hash: null, error: null });
+        setForm({
+          question: "",
+          rulesUri: "",
+          category: "",
+          expiry: "",
+          collateral: COLLATERAL_CONTRACT,
+          bondAmount: "10",
+          disputeWindowHours: "48",
+          initialLiquidity: "100",
+        });
       } catch (e) {
         setTxState({ status: "failed", hash: null, error: parseDikeError(e) });
       }
@@ -133,14 +157,40 @@ export default function CreateMarketPage() {
     return (
       <div className="space-y-6">
         <h1 className="font-heading text-3xl font-normal tracking-tight">Create Market</h1>
+        <EmptyState
+          title="Connect your wallet"
+          description="Only approved creators can create markets."
+          action={
+            <Button size="sm" onClick={connect} disabled={isConnecting}>
+              {isConnecting ? "Connecting…" : "Connect Wallet"}
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
+
+  if (permissionsLoading) {
+    return (
+      <div className="space-y-6">
+        <h1 className="font-heading text-3xl font-normal tracking-tight">Create Market</h1>
         <Card>
-          <CardContent className="p-6 text-center space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Connect your wallet. Only approved creators can create markets.
-            </p>
-            <Button size="sm" onClick={connect}>Connect Wallet</Button>
+          <CardContent className="p-6 text-sm text-muted-foreground">
+            Verifying approved creator access…
           </CardContent>
         </Card>
+      </div>
+    );
+  }
+
+  if (!permissions?.canCreate) {
+    return (
+      <div className="space-y-6">
+        <h1 className="font-heading text-3xl font-normal tracking-tight">Create Market</h1>
+        <EmptyState
+          title="Creator access required"
+          description="Connected wallet is not approved to create markets."
+        />
       </div>
     );
   }
