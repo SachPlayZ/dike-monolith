@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { MarketData } from "@/lib/types";
 import { MarketStatusBadge } from "./MarketStatusBadge";
-import { formatUsdc, impliedYesBps } from "@/lib/stellar/scval";
+import { impliedYesBps } from "@/lib/stellar/scval";
 import { Card, CardContent } from "@/components/ui/card";
 
 interface MarketCardProps {

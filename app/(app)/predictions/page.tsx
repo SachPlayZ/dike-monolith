@@ -5,7 +5,7 @@ import { MarketFilters } from "@/features/market/MarketFilters";
 import { PageLoader } from "@/components/data-state/LoadingSpinner";
 import { EmptyState } from "@/components/data-state/EmptyState";
 import { ServiceUnavailableError } from "@/lib/api/client";
-import type { MarketData, MarketStatus } from "@/lib/types";
+import type { MarketData } from "@/lib/types";
 
 export const metadata = {
   title: "Markets — DIKE",
@@ -23,7 +23,7 @@ async function MarketList({ statusFilter }: { statusFilter: string }) {
     markets = await fetchMarkets();
   } catch (e) {
     if (e instanceof ServiceUnavailableError) {
-      error = "dike-services is not running. Start it at http://localhost:4000 to see live markets.";
+      error = "The markets service is currently unavailable. Please try again later.";
     } else {
       error = e instanceof Error ? e.message : "Failed to load markets";
     }

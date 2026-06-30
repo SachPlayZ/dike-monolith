@@ -113,7 +113,11 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
   return (
     <Card size="sm">
       <CardContent className="space-y-4">
-      <h3 className="font-heading text-lg font-normal">Trade</h3>
+      <div className="space-y-1">
+        <h3 className="font-heading text-lg font-normal">Trade</h3>
+        <p className="text-xs text-muted-foreground line-clamp-2">{marketQuestion}</p>
+        <p className="text-[11px] font-mono text-muted-foreground">Market #{marketId.slice(0, 8)}…</p>
+      </div>
 
       <div className="flex border border-border overflow-hidden">
         {(["buy", "sell"] as Side[]).map((s) => (

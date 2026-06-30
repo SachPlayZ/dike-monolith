@@ -14,11 +14,10 @@ const STATUS_COLORS: Record<string, string> = {
 
 interface CaseCardProps {
   councilCase: CouncilCase;
-  expanded?: boolean;
   onClick?: () => void;
 }
 
-export function CaseCard({ councilCase, expanded, onClick }: CaseCardProps) {
+export function CaseCard({ councilCase, onClick }: CaseCardProps) {
   return (
     <Card
       size="sm"

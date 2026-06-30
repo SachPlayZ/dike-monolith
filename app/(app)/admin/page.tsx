@@ -11,22 +11,31 @@ export const metadata = {
   title: "Admin — DIKE",
 };
 
-async function AdminContent() {
+async function loadAdminData() {
   try {
     const [state, timelockActions] = await Promise.all([
       fetchGovernanceState(),
       fetchTimelockActions(),
     ]);
-    return <GovernancePanel state={state} timelockActions={timelockActions} />;
+    return { state, timelockActions, error: null as string | null };
   } catch (e) {
-    const msg =
+    const error =
       e instanceof ServiceUnavailableError
         ? "dike-services is not running. Start it to view governance state."
         : e instanceof Error
         ? e.message
         : "Failed to load admin state";
-    return <EmptyState title="Unavailable" description={msg} />;
+    return { state: null, timelockActions: null, error };
   }
+}
+
+async function AdminContent() {
+  const { state, timelockActions, error } = await loadAdminData();
+  if (error || !state || !timelockActions) {
+    return <EmptyState title="Unavailable" description={error ?? "Failed to load admin state"} />;
+  }
+
+  return <GovernancePanel state={state} timelockActions={timelockActions} />;
 }
 
 export default function AdminPage() {
@@ -40,7 +49,7 @@ export default function AdminPage() {
       </div>
 
       <Suspense fallback={<PageLoader />}>
-          <AdminContent />
+        <AdminContent />
       </Suspense>
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useWallet } from "@/lib/contexts/wallet";
 import {
   councilCalcCommitment,
@@ -41,10 +41,21 @@ export function VoteForm({ councilCase, onSuccess }: VoteFormProps) {
   const { address, isConnected, connect, sign } = useWallet();
   const [selectedOutcome, setSelectedOutcome] = useState<Outcome>("Yes");
   const [revealSalt, setRevealSalt] = useState("");
+  const [now, setNow] = useState(0);
   const [txState, setTxState] = useState<TxState>({ status: "idle", hash: null, error: null });
   const [isPending, startTransition] = useTransition();
 
-  const now = Math.floor(Date.now() / 1000);
+  useEffect(() => {
+    const updateNow = () => setNow(Math.floor(Date.now() / 1000));
+    const timeoutId = window.setTimeout(updateNow, 0);
+    const intervalId = window.setInterval(updateNow, 1000);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
   const inCommitPhase =
     councilCase.status === "CommitPhase" && now < councilCase.commitEnd;
   const inRevealPhase =

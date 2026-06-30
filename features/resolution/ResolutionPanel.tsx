@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useWallet } from "@/lib/contexts/wallet";
 import {
   buildRequestResolution,
@@ -31,6 +31,18 @@ export function ResolutionPanel({ market, request, onSuccess }: ResolutionPanelP
   const [isPending, startTransition] = useTransition();
   const [selectedOutcome, setSelectedOutcome] = useState<Outcome>("Yes");
   const [evidenceUri, setEvidenceUri] = useState("");
+  const [now, setNow] = useState(0);
+
+  useEffect(() => {
+    const updateNow = () => setNow(Math.floor(Date.now() / 1000));
+    const timeoutId = window.setTimeout(updateNow, 0);
+    const intervalId = window.setInterval(updateNow, 1000);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   if (!isConnected) {
     return (
@@ -61,7 +73,6 @@ export function ResolutionPanel({ market, request, onSuccess }: ResolutionPanelP
     });
   }
 
-  const now = Math.floor(Date.now() / 1000);
   const marketExpired = now > market.config.expiry;
 
   return (

@@ -5,7 +5,6 @@ import {
   toI128,
   toU64,
   toU32,
-  toSymbol,
   toString,
   toBytes,
   toOutcome,

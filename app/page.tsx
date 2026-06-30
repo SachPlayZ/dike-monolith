@@ -2,18 +2,11 @@
 
 import { GrainGradient } from "@paper-design/shaders-react";
 import { Instrument_Serif } from "next/font/google";
-import { Google_Sans_Code } from "next/font/google";
 import { Instrument_Sans } from "next/font/google";
 import Link from "next/link";
 import LandingNavbar from "@/components/LandingNavbar";
 
 const instrumentSerif = Instrument_Serif({
-  subsets: ["latin"],
-  weight: ["400"],
-  display: "swap",
-});
-
-const googleSansCode = Google_Sans_Code({
   subsets: ["latin"],
   weight: ["400"],
   display: "swap",

@@ -52,7 +52,7 @@ export async function buildAndSimulate(
   const account = await rpc.getAccount(sourceAddress);
   const contract = new StellarSdk.Contract(contractId);
 
-  let tx = new StellarSdk.TransactionBuilder(account, {
+  const tx = new StellarSdk.TransactionBuilder(account, {
     fee: StellarSdk.BASE_FEE,
     networkPassphrase: networkConfig.networkPassphrase,
   })

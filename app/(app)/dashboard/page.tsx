@@ -20,18 +20,43 @@ import type { UserPosition } from "@/lib/types";
 
 export default function DashboardPage() {
   const { address, isConnected, connect } = useWallet();
+  const [portfolioAddress, setPortfolioAddress] = useState<string | null>(null);
   const [positions, setPositions] = useState<UserPosition[]>([]);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedPosition, setSelectedPosition] = useState<UserPosition | null>(null);
 
+  async function refreshPortfolio(nextAddress: string) {
+    try {
+      const nextPositions = await fetchPortfolio(nextAddress);
+      setPositions(nextPositions);
+      setError(null);
+    } catch (e) {
+      setPositions([]);
+      setError(
+        e instanceof ServiceUnavailableError
+          ? "dike-services is not running. Start it to view your portfolio."
+          : e instanceof Error
+          ? e.message
+          : "Failed to load portfolio"
+      );
+    } finally {
+      setPortfolioAddress(nextAddress);
+    }
+  }
+
   useEffect(() => {
     if (!address) return;
-    setLoading(true);
-    setError(null);
-    fetchPortfolio(address)
-      .then(setPositions)
+    let cancelled = false;
+    void fetchPortfolio(address)
+      .then((nextPositions) => {
+        if (cancelled) return;
+        setPositions(nextPositions);
+        setError(null);
+        setPortfolioAddress(address);
+      })
       .catch((e) => {
+        if (cancelled) return;
+        setPositions([]);
         setError(
           e instanceof ServiceUnavailableError
             ? "dike-services is not running. Start it to view your portfolio."
@@ -39,9 +64,15 @@ export default function DashboardPage() {
             ? e.message
             : "Failed to load portfolio"
         );
-      })
-      .finally(() => setLoading(false));
+        setPortfolioAddress(address);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [address]);
+
+  const loading = Boolean(address) && portfolioAddress !== address;
 
   if (!isConnected) {
     return (
@@ -109,7 +140,9 @@ export default function DashboardPage() {
                 position={selectedPosition}
                 onSuccess={() => {
                   setSelectedPosition(null);
-                  if (address) fetchPortfolio(address).then(setPositions).catch(() => {});
+                  if (address) {
+                    void refreshPortfolio(address);
+                  }
                 }}
               />
             </>
