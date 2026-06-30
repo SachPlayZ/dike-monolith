@@ -1,5 +1,8 @@
+// Server-side: hit EC2 directly. Client-side: route through /api/proxy to avoid mixed-content blocks.
 const SERVICES_URL =
-  process.env.NEXT_PUBLIC_DIKE_SERVICES_URL ?? "http://localhost:4000";
+  typeof window === "undefined"
+    ? (process.env.NEXT_PUBLIC_DIKE_SERVICES_URL ?? "http://localhost:4000")
+    : "/api/proxy";
 
 export class ServiceUnavailableError extends Error {
   constructor(path: string) {
