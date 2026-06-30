@@ -1,21 +1,54 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { format } from "date-fns";
+import { CalendarIcon } from "lucide-react";
 import { useWallet } from "@/lib/contexts/wallet";
 import { buildCreateMarket, type CreateMarketParams } from "@/lib/contracts/clients";
 import { submitAndPoll, parseDikeError } from "@/lib/stellar/transaction";
 import { parseUsdc } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { COLLATERAL_CONTRACT } from "@/lib/contracts/manifest";
 import type { TxState } from "@/lib/types";
 
 // Opening price is fixed at 5000 bps — contract rejects any other value
 const OPENING_PRICE_BPS = 5000;
+
+async function sha256Hex(value: string) {
+  const bytes = new TextEncoder().encode(value.trim());
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function parseExpiryValue(value: string) {
+  return value ? new Date(value) : undefined;
+}
+
+function toExpiryValue(date: Date | undefined, time: string) {
+  if (!date) return "";
+  const [hours = "23", minutes = "59"] = time.split(":");
+  const next = new Date(date);
+  next.setHours(Number(hours), Number(minutes), 0, 0);
+  const timezoneOffset = next.getTimezoneOffset() * 60_000;
+  return new Date(next.getTime() - timezoneOffset).toISOString().slice(0, 16);
+}
 
 export default function CreateMarketPage() {
   const { address, isConnected, connect, sign } = useWallet();
@@ -24,9 +57,7 @@ export default function CreateMarketPage() {
 
   const [form, setForm] = useState({
     question: "",
-    questionHash: "",
     rulesUri: "",
-    rulesHash: "",
     category: "",
     expiry: "",
     collateral: COLLATERAL_CONTRACT,
@@ -66,11 +97,15 @@ export default function CreateMarketPage() {
         setTxState({ status: "building", hash: null, error: null });
 
         const expiryTs = Math.floor(new Date(form.expiry).getTime() / 1000);
+        const [questionHash, rulesHash] = await Promise.all([
+          sha256Hex(form.question),
+          sha256Hex(form.rulesUri),
+        ]);
         const params: CreateMarketParams = {
           question: form.question,
-          questionHash: form.questionHash || "0".repeat(64),
+          questionHash,
           rulesUri: form.rulesUri,
-          rulesHash: form.rulesHash || "0".repeat(64),
+          rulesHash,
           category: form.category || "General",
           expiry: expiryTs,
           collateral: form.collateral,
@@ -130,16 +165,8 @@ export default function CreateMarketPage() {
           />
         </Field>
 
-        <Field label="Question Hash (bytes32 hex)">
-          <Input type="text" value={form.questionHash} onChange={set("questionHash")} placeholder="0x…" />
-        </Field>
-
         <Field label="Rules URI *">
           <Input type="url" value={form.rulesUri} onChange={set("rulesUri")} placeholder="https://…" />
-        </Field>
-
-        <Field label="Rules Hash (bytes32 hex)">
-          <Input type="text" value={form.rulesHash} onChange={set("rulesHash")} placeholder="0x…" />
         </Field>
 
         <Field label="Category">
@@ -147,7 +174,10 @@ export default function CreateMarketPage() {
         </Field>
 
         <Field label="Expiry *">
-          <Input type="datetime-local" value={form.expiry} onChange={set("expiry")} />
+          <ExpiryPicker
+            value={form.expiry}
+            onChange={(value) => setForm((current) => ({ ...current, expiry: value }))}
+          />
         </Field>
 
         <Field label="Collateral Address">
@@ -167,6 +197,8 @@ export default function CreateMarketPage() {
         </div>
 
         <div className="bg-muted/50 px-4 py-3 text-xs text-muted-foreground">
+          Question hash and rules hash are auto-generated from your inputs.
+          <br />
           Opening price: <strong>50 / 50</strong> (fixed — contract enforces this)
         </div>
 
@@ -191,6 +223,71 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div className="space-y-1">
       <Label className="text-muted-foreground font-medium normal-case tracking-normal">{label}</Label>
       {children}
+    </div>
+  );
+}
+
+function ExpiryPicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const selectedDate = parseExpiryValue(value);
+  const currentTime = value ? value.slice(11, 16) : "23:59";
+
+  return (
+    <div className="space-y-2">
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            className={cn(
+              "w-full justify-between rounded-none border-x-0 border-t-0 px-0 text-left font-normal hover:bg-transparent",
+              !selectedDate && "text-muted-foreground"
+            )}
+          >
+            <span>
+              {selectedDate ? format(selectedDate, "PPP p") : "Pick expiry date and time"}
+            </span>
+            <CalendarIcon className="size-4 opacity-70" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-auto p-0">
+          <PopoverHeader className="px-4 pt-4">
+            <PopoverTitle>Expiry</PopoverTitle>
+            <PopoverDescription>
+              Choose market close date, then set exact local time.
+            </PopoverDescription>
+          </PopoverHeader>
+          <div className="border-t border-border/60">
+            <Calendar
+              mode="single"
+              selected={selectedDate}
+              onSelect={(date) => onChange(toExpiryValue(date, currentTime))}
+              disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+              className="mx-auto"
+            />
+          </div>
+          <div className="border-t border-border/60 p-4">
+            <Label className="mb-2 block text-xs text-muted-foreground font-medium normal-case tracking-normal">
+              Time
+            </Label>
+            <Input
+              type="time"
+              value={currentTime}
+              onChange={(event) =>
+                onChange(toExpiryValue(selectedDate ?? new Date(), event.target.value))
+              }
+            />
+          </div>
+        </PopoverContent>
+      </Popover>
+      <p className="text-xs text-muted-foreground">
+        Stored using your local timezone, then converted before submit.
+      </p>
     </div>
   );
 }
