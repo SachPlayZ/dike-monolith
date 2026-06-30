@@ -10,6 +10,10 @@ import {
 import { submitAndPoll, parseDikeError } from "@/lib/stellar/transaction";
 import { parseUsdc, formatUsdc } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import type { TxState } from "@/lib/types";
 
 type Mode = "add" | "remove";
@@ -65,88 +69,82 @@ export function LiquidityForm({ poolId }: LiquidityFormProps) {
 
   if (!isConnected) {
     return (
-      <div className="rounded-lg border border-border p-6 text-center">
-        <p className="text-sm text-muted-foreground mb-3">
-          Connect your wallet to provide liquidity
-        </p>
-        <button
-          onClick={connect}
-          className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90"
-        >
-          Connect Wallet
-        </button>
-      </div>
+      <Card size="sm">
+        <CardContent className="text-center space-y-3">
+          <p className="text-sm text-muted-foreground">Connect your wallet to provide liquidity</p>
+          <Button size="sm" onClick={connect}>Connect Wallet</Button>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className="rounded-lg border border-border p-5 space-y-4">
-      <h3 className="text-sm font-semibold">Liquidity</h3>
+    <Card size="sm">
+      <CardContent className="space-y-4">
+      <h3 className="font-heading text-lg font-normal">Liquidity</h3>
 
-      <div className="flex rounded-md border border-border overflow-hidden text-sm">
+      <div className="flex border border-border overflow-hidden">
         {(["add", "remove"] as Mode[]).map((m) => (
-          <button
+          <Button
             key={m}
+            size="xs"
+            variant={mode === m ? "default" : "ghost"}
+            className="flex-1 capitalize"
             onClick={() => { setMode(m); setAmountInput(""); }}
-            className={`flex-1 py-1.5 capitalize transition-colors ${
-              mode === m
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted"
-            }`}
           >
             {m}
-          </button>
+          </Button>
         ))}
       </div>
 
       {lpBalance !== null && (
         <p className="text-xs text-muted-foreground">
           LP balance: {formatUsdc(BigInt(lpBalance))}
-          <button
+          <Button
+            variant="link"
+            size="xs"
+            className="ml-2"
             onClick={() => setAmountInput(formatUsdc(BigInt(lpBalance)))}
-            className="ml-2 text-primary underline"
           >
             Max
-          </button>
+          </Button>
         </p>
       )}
 
-      <div>
-        <label className="text-xs text-muted-foreground mb-1 block">
+      <div className="space-y-1">
+        <Label className="text-muted-foreground font-medium normal-case tracking-normal">
           {mode === "add" ? "USDC Amount" : "LP Shares"}
-        </label>
-        <input
+        </Label>
+        <Input
           type="number"
           min="0"
           step="0.01"
           placeholder="0.00"
           value={amountInput}
           onChange={(e) => setAmountInput(e.target.value)}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
         />
       </div>
 
       <div className="flex gap-2">
-        <button
-          onClick={loadLpBalance}
-          className="rounded-md border border-border px-3 py-2 text-xs hover:bg-muted transition-colors"
-        >
+        <Button variant="outline" size="xs" onClick={loadLpBalance}>
           Refresh Balance
-        </button>
-        <button
+        </Button>
+        <Button
+          size="sm"
+          className="flex-1"
           onClick={handleSubmit}
           disabled={isPending || !amountInput}
-          className="flex-1 rounded-md bg-primary py-2 text-sm text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
         >
           {isPending
             ? "Processing…"
             : mode === "add"
             ? "Add Liquidity"
             : "Remove Liquidity"}
-        </button>
+        </Button>
       </div>
 
       <TxStateDisplay state={txState} />
-    </div>
+      </CardContent>
+    </Card>
   );
 }

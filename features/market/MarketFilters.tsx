@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
+import { Button } from "@/components/ui/button";
 import type { MarketStatus } from "@/lib/types";
 
 const STATUSES: MarketStatus[] = [
@@ -26,28 +27,24 @@ export function MarketFilters() {
 
   return (
     <div className="flex flex-wrap gap-2">
-      <button
+      <Button
+        size="xs"
+        variant={!current ? "default" : "outline"}
+        className="rounded-full"
         onClick={() => setFilter("")}
-        className={`rounded-full px-3 py-1 text-xs border transition-colors ${
-          !current
-            ? "bg-primary text-primary-foreground border-primary"
-            : "border-border text-muted-foreground hover:border-foreground"
-        }`}
       >
         All
-      </button>
+      </Button>
       {STATUSES.map((s) => (
-        <button
+        <Button
           key={s}
+          size="xs"
+          variant={current === s ? "default" : "outline"}
+          className="rounded-full"
           onClick={() => setFilter(s)}
-          className={`rounded-full px-3 py-1 text-xs border transition-colors ${
-            current === s
-              ? "bg-primary text-primary-foreground border-primary"
-              : "border-border text-muted-foreground hover:border-foreground"
-          }`}
         >
           {s}
-        </button>
+        </Button>
       ))}
     </div>
   );

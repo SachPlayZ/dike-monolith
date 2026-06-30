@@ -1,4 +1,5 @@
 import type { AdminState, TimelockAction } from "@/lib/types";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface GovernancePanelProps {
   state: AdminState;
@@ -18,19 +19,19 @@ export function GovernancePanel({ state, timelockActions }: GovernancePanelProps
           <Kv label="Treasury" value={state.treasury} mono />
           <Kv
             label="Trading fee"
-            value={`${state.feeConfig.tradingFeeBps / 100}%`}
+            value={state.feeConfig ? `${state.feeConfig.tradingFeeBps / 100}%` : "—"}
           />
           <Kv
             label="LP fee share"
-            value={`${state.feeConfig.lpFeeShareBps / 100}%`}
+            value={state.feeConfig ? `${state.feeConfig.lpFeeShareBps / 100}%` : "—"}
           />
           <Kv
             label="Treasury share"
-            value={`${state.feeConfig.treasuryFeeShareBps / 100}%`}
+            value={state.feeConfig ? `${state.feeConfig.treasuryFeeShareBps / 100}%` : "—"}
           />
           <Kv
             label="COD share"
-            value={`${state.feeConfig.codFeeShareBps / 100}%`}
+            value={state.feeConfig ? `${state.feeConfig.codFeeShareBps / 100}%` : "—"}
           />
         </Grid>
       </Section>
@@ -125,29 +126,35 @@ export function GovernancePanel({ state, timelockActions }: GovernancePanelProps
 
 function TimelockRow({ action }: { action: TimelockAction }) {
   return (
-    <li className="rounded-md border border-border px-3 py-2 text-xs space-y-1">
-      <div className="flex justify-between">
-        <span className="font-medium">{action.kind}</span>
-        <span className="text-muted-foreground font-mono">
-          {action.actionId.slice(0, 8)}…
-        </span>
-      </div>
-      <p className="text-muted-foreground">
-        ETA: {new Date(action.eta * 1000).toLocaleString()}
-      </p>
-      {action.data && (
-        <p className="font-mono text-muted-foreground break-all">{action.data}</p>
-      )}
+    <li>
+      <Card size="sm">
+        <CardContent className="space-y-1 text-xs">
+          <div className="flex justify-between">
+            <span className="font-medium">{action.kind}</span>
+            <span className="text-muted-foreground font-mono">
+              {action.actionId.slice(0, 8)}…
+            </span>
+          </div>
+          <p className="text-muted-foreground">
+            ETA: {new Date(action.eta * 1000).toLocaleString()}
+          </p>
+          {action.data && (
+            <p className="font-mono text-muted-foreground break-all">{action.data}</p>
+          )}
+        </CardContent>
+      </Card>
     </li>
   );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-border p-4 space-y-3">
-      <h3 className="text-sm font-semibold">{title}</h3>
-      {children}
-    </div>
+    <Card size="sm">
+      <CardHeader className="pb-0">
+        <CardTitle className="text-sm font-semibold normal-case tracking-normal">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">{children}</CardContent>
+    </Card>
   );
 }
 

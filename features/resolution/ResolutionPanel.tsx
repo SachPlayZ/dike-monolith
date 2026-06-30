@@ -11,6 +11,10 @@ import {
 } from "@/lib/contracts/clients";
 import { submitAndPoll, parseDikeError } from "@/lib/stellar/transaction";
 import { TxStateDisplay } from "@/components/data-state/TxState";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import type { MarketData, ResolutionRequest, TxState, Outcome } from "@/lib/types";
 
 interface ResolutionPanelProps {
@@ -30,12 +34,12 @@ export function ResolutionPanel({ market, request, onSuccess }: ResolutionPanelP
 
   if (!isConnected) {
     return (
-      <div className="rounded-lg border border-border p-6 text-center">
-        <p className="text-sm text-muted-foreground mb-3">Connect wallet to take resolution actions</p>
-        <button onClick={connect} className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90">
-          Connect Wallet
-        </button>
-      </div>
+      <Card size="sm">
+        <CardContent className="text-center space-y-3">
+          <p className="text-sm text-muted-foreground">Connect wallet to take resolution actions</p>
+          <Button size="sm" onClick={connect}>Connect Wallet</Button>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -62,13 +66,14 @@ export function ResolutionPanel({ market, request, onSuccess }: ResolutionPanelP
 
   return (
     <div className="space-y-5">
-      {/* Request Resolution */}
       {market.status === "TradingClosed" && !request && marketExpired && (
         <Section title="Request Resolution">
           <p className="text-xs text-muted-foreground mb-3">
             Market has expired. Start the resolution process by requesting COD Oracle.
           </p>
-          <button
+          <Button
+            size="sm"
+            disabled={isPending}
             onClick={() =>
               exec(() =>
                 buildRequestResolution(
@@ -82,15 +87,12 @@ export function ResolutionPanel({ market, request, onSuccess }: ResolutionPanelP
                 )
               )
             }
-            disabled={isPending}
-            className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             Request Resolution
-          </button>
+          </Button>
         </Section>
       )}
 
-      {/* Propose Outcome */}
       {request && request.status === "Requested" && (
         <Section title="Propose Outcome">
           <OutcomeSelector value={selectedOutcome} onChange={setSelectedOutcome} />
@@ -98,26 +100,18 @@ export function ResolutionPanel({ market, request, onSuccess }: ResolutionPanelP
           <p className="text-xs text-muted-foreground">
             Bond amount: {market.config.bondAmount} (will be locked until finalization)
           </p>
-          <button
-            onClick={() =>
-              exec(() =>
-                buildProposeOutcome(
-                  address!,
-                  request.requestId,
-                  selectedOutcome,
-                  evidenceUri
-                )
-              )
-            }
+          <Button
+            size="sm"
             disabled={isPending || !evidenceUri}
-            className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            onClick={() =>
+              exec(() => buildProposeOutcome(address!, request.requestId, selectedOutcome, evidenceUri))
+            }
           >
             Propose {selectedOutcome}
-          </button>
+          </Button>
         </Section>
       )}
 
-      {/* Dispute */}
       {request && request.status === "Proposed" && request.proposedAt && (
         <Section title="Dispute Outcome">
           {(() => {
@@ -138,35 +132,31 @@ export function ResolutionPanel({ market, request, onSuccess }: ResolutionPanelP
                   <>
                     <OutcomeSelector value={selectedOutcome} onChange={setSelectedOutcome} />
                     <EvidenceInput value={evidenceUri} onChange={setEvidenceUri} />
-                    <button
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={isPending || !evidenceUri}
                       onClick={() =>
                         exec(() =>
-                          buildDisputeOutcome(
-                            address!,
-                            request.requestId,
-                            selectedOutcome,
-                            evidenceUri
-                          )
+                          buildDisputeOutcome(address!, request.requestId, selectedOutcome, evidenceUri)
                         )
                       }
-                      disabled={isPending || !evidenceUri}
-                      className="rounded-md border border-destructive px-4 py-2 text-sm text-destructive hover:bg-destructive/10 disabled:opacity-50"
                     >
                       Dispute — Counter {selectedOutcome}
-                    </button>
+                    </Button>
                   </>
                 )}
 
                 {canFinalize && (
-                  <button
+                  <Button
+                    size="sm"
+                    disabled={isPending}
                     onClick={() =>
                       exec(() => buildFinalizeUndisputed(address!, request.requestId))
                     }
-                    disabled={isPending}
-                    className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                   >
                     Finalize (undisputed)
-                  </button>
+                  </Button>
                 )}
               </>
             );
@@ -174,21 +164,18 @@ export function ResolutionPanel({ market, request, onSuccess }: ResolutionPanelP
         </Section>
       )}
 
-      {/* Escalate to Council */}
       {request && request.status === "Disputed" && (
         <Section title="Escalate to Council">
           <p className="text-xs text-muted-foreground mb-3">
             Disputed outcome ready to escalate to Council of Dike for voting.
           </p>
-          <button
-            onClick={() =>
-              exec(() => buildEscalateToCouncil(address!, request.requestId))
-            }
+          <Button
+            size="sm"
             disabled={isPending}
-            className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            onClick={() => exec(() => buildEscalateToCouncil(address!, request.requestId))}
           >
             Escalate to Council
-          </button>
+          </Button>
         </Section>
       )}
 
@@ -199,57 +186,42 @@ export function ResolutionPanel({ market, request, onSuccess }: ResolutionPanelP
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-border p-4 space-y-3">
-      <h4 className="text-sm font-semibold">{title}</h4>
-      {children}
-    </div>
+    <Card size="sm">
+      <CardHeader className="pb-0">
+        <CardTitle className="text-sm font-semibold normal-case tracking-normal">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">{children}</CardContent>
+    </Card>
   );
 }
 
-function OutcomeSelector({
-  value,
-  onChange,
-}: {
-  value: Outcome;
-  onChange: (o: Outcome) => void;
-}) {
+function OutcomeSelector({ value, onChange }: { value: Outcome; onChange: (o: Outcome) => void }) {
   return (
     <div className="flex gap-2">
       {OUTCOMES.map((o) => (
-        <button
+        <Button
           key={o}
+          size="xs"
+          variant={value === o ? "default" : "outline"}
+          className="flex-1"
           onClick={() => onChange(o)}
-          className={`flex-1 rounded-md border py-1.5 text-xs transition-colors ${
-            value === o
-              ? "bg-primary border-primary text-primary-foreground"
-              : "border-border text-muted-foreground hover:bg-muted"
-          }`}
         >
           {o}
-        </button>
+        </Button>
       ))}
     </div>
   );
 }
 
-function EvidenceInput({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-}) {
+function EvidenceInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <div>
-      <label className="text-xs text-muted-foreground mb-1 block">
-        Evidence URI (required)
-      </label>
-      <input
+    <div className="space-y-1">
+      <Label className="text-muted-foreground font-medium normal-case tracking-normal">Evidence URI (required)</Label>
+      <Input
         type="url"
         placeholder="https://…"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
       />
     </div>
   );

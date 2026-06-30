@@ -1,5 +1,8 @@
 import type { UserPosition } from "@/lib/types";
 import { MarketStatusBadge } from "@/features/market/MarketStatusBadge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { formatUsdc } from "@/lib/stellar/scval";
 
 interface PositionCardProps {
@@ -17,90 +20,79 @@ export function PositionCard({ position, onRedeem }: PositionCardProps) {
     (hasYes || hasNo);
 
   return (
-    <div className="rounded-lg border border-border p-4 space-y-3">
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-medium leading-snug line-clamp-2">
-          {position.question}
-        </p>
-        <MarketStatusBadge status={position.marketStatus} />
-      </div>
+    <Card size="sm">
+      <CardContent className="space-y-3">
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-sm font-medium leading-snug line-clamp-2">
+            {position.question}
+          </p>
+          <MarketStatusBadge status={position.marketStatus} />
+        </div>
 
-      <div className="grid grid-cols-2 gap-2 text-xs">
-        {hasYes && (
-          <Stat label="YES tokens" value={formatUsdc(BigInt(position.yesBalance))} />
-        )}
-        {hasNo && (
-          <Stat label="NO tokens" value={formatUsdc(BigInt(position.noBalance))} />
-        )}
-        {hasLp && (
-          <Stat label="LP shares" value={formatUsdc(BigInt(position.lpShares))} />
-        )}
-        {BigInt(position.deposit) > 0n && (
-          <Stat label="Deposit" value={formatUsdc(BigInt(position.deposit))} />
-        )}
-        {BigInt(position.rootStake) > 0n && (
-          <Stat label="Root stake" value={formatUsdc(BigInt(position.rootStake))} />
-        )}
-        {BigInt(position.childDebt) > 0n && (
-          <Stat
-            label="Child debt"
-            value={formatUsdc(BigInt(position.childDebt))}
-            warn
-          />
-        )}
-        {BigInt(position.parentDebt) > 0n && (
-          <Stat
-            label="Parent debt"
-            value={formatUsdc(BigInt(position.parentDebt))}
-            warn
-          />
-        )}
-      </div>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          {hasYes && (
+            <Stat label="YES tokens" value={formatUsdc(BigInt(position.yesBalance))} />
+          )}
+          {hasNo && (
+            <Stat label="NO tokens" value={formatUsdc(BigInt(position.noBalance))} />
+          )}
+          {hasLp && (
+            <Stat label="LP shares" value={formatUsdc(BigInt(position.lpShares))} />
+          )}
+          {BigInt(position.deposit) > 0n && (
+            <Stat label="Deposit" value={formatUsdc(BigInt(position.deposit))} />
+          )}
+          {BigInt(position.rootStake) > 0n && (
+            <Stat label="Root stake" value={formatUsdc(BigInt(position.rootStake))} />
+          )}
+          {BigInt(position.childDebt) > 0n && (
+            <Stat label="Child debt" value={formatUsdc(BigInt(position.childDebt))} warn />
+          )}
+          {BigInt(position.parentDebt) > 0n && (
+            <Stat label="Parent debt" value={formatUsdc(BigInt(position.parentDebt))} warn />
+          )}
+        </div>
 
-      {position.finalOutcome && (
-        <p className="text-xs">
-          Final outcome:{" "}
-          <span
-            className={
-              position.finalOutcome === "Yes"
-                ? "text-green-600 dark:text-green-400 font-semibold"
-                : position.finalOutcome === "No"
-                ? "text-red-600 dark:text-red-400 font-semibold"
-                : "text-muted-foreground"
-            }
+        {position.finalOutcome && (
+          <p className="text-xs">
+            Final outcome:{" "}
+            <span
+              className={
+                position.finalOutcome === "Yes"
+                  ? "text-green-600 dark:text-green-400 font-semibold"
+                  : position.finalOutcome === "No"
+                  ? "text-red-600 dark:text-red-400 font-semibold"
+                  : "text-muted-foreground"
+              }
+            >
+              {position.finalOutcome}
+            </span>
+          </p>
+        )}
+
+        {(BigInt(position.childDebt) > 0n || BigInt(position.parentDebt) > 0n) && (
+          <Alert variant="warning">
+            <AlertDescription>
+              Position has encumbered debt. Transfers and sells may be blocked until debt is cleared.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {isRedeemable && onRedeem && (
+          <Button
+            size="xs"
+            className="w-full"
+            onClick={() => onRedeem(position)}
           >
-            {position.finalOutcome}
-          </span>
-        </p>
-      )}
-
-      {(BigInt(position.childDebt) > 0n || BigInt(position.parentDebt) > 0n) && (
-        <p className="text-xs text-yellow-700 dark:text-yellow-400 bg-yellow-500/10 rounded p-2">
-          Position has encumbered debt. Transfers and sells may be blocked until debt is cleared.
-        </p>
-      )}
-
-      {isRedeemable && onRedeem && (
-        <button
-          onClick={() => onRedeem(position)}
-          className="w-full rounded-md bg-primary py-1.5 text-xs text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          Redeem
-        </button>
-      )}
-    </div>
+            Redeem
+          </Button>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
-function Stat({
-  label,
-  value,
-  warn,
-}: {
-  label: string;
-  value: string;
-  warn?: boolean;
-}) {
+function Stat({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
   return (
     <div>
       <p className="text-muted-foreground">{label}</p>

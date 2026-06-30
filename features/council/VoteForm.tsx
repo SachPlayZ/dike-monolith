@@ -11,6 +11,12 @@ import {
 } from "@/lib/contracts/clients";
 import { submitAndPoll, parseDikeError } from "@/lib/stellar/transaction";
 import { TxStateDisplay } from "@/components/data-state/TxState";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "sonner";
 import type { CouncilCase, TxState, Outcome } from "@/lib/types";
 
 interface VoteFormProps {
@@ -50,12 +56,12 @@ export function VoteForm({ councilCase, onSuccess }: VoteFormProps) {
 
   if (!isConnected) {
     return (
-      <div className="rounded-lg border border-border p-4 text-center">
-        <p className="text-sm text-muted-foreground mb-3">Connect wallet to vote</p>
-        <button onClick={connect} className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90">
-          Connect Wallet
-        </button>
-      </div>
+      <Card size="sm">
+        <CardContent className="text-center space-y-3">
+          <p className="text-sm text-muted-foreground">Connect wallet to vote</p>
+          <Button size="sm" onClick={connect}>Connect Wallet</Button>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -87,14 +93,14 @@ export function VoteForm({ councilCase, onSuccess }: VoteFormProps) {
       selectedOutcome,
       salt
     );
-    // Persist reveal data locally — never sent to server
     const pending = { outcome: selectedOutcome, salt, commitment, caseId: councilCase.caseId };
     localStorage.setItem(PENDING_KEY(address, councilCase.caseId), JSON.stringify(pending));
 
     await exec(() => buildCommitVote(address, councilCase.caseId, commitment));
-    alert(
-      `Salt saved locally. Keep it safe — you need it to reveal your vote.\n\nSalt: ${salt}`
-    );
+    toast("Salt saved to browser", {
+      description: `Keep it safe — needed to reveal. Salt: ${salt}`,
+      duration: 15000,
+    });
   }
 
   function loadStoredReveal() {
@@ -109,117 +115,117 @@ export function VoteForm({ councilCase, onSuccess }: VoteFormProps) {
   return (
     <div className="space-y-4">
       {inCommitPhase && (
-        <div className="rounded-lg border border-border p-4 space-y-3">
-          <h4 className="text-sm font-semibold">Commit Vote</h4>
-          <p className="text-xs text-muted-foreground">
-            Commit ends: {new Date(councilCase.commitEnd * 1000).toLocaleString()}
-          </p>
-          <p className="text-xs text-yellow-700 dark:text-yellow-400 bg-yellow-500/10 rounded p-2">
-            Your salt is generated randomly and stored in your browser. Losing it prevents you from revealing your vote.
-          </p>
-          <div className="flex gap-2">
-            {OUTCOMES.map((o) => (
-              <button
-                key={o}
-                onClick={() => setSelectedOutcome(o)}
-                className={`flex-1 rounded-md border py-1.5 text-xs transition-colors ${
-                  selectedOutcome === o
-                    ? "bg-primary border-primary text-primary-foreground"
-                    : "border-border text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                {o}
-              </button>
-            ))}
-          </div>
-          <button
-            onClick={handleCommit}
-            disabled={isPending}
-            className="w-full rounded-md bg-primary py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-          >
-            {isPending ? "Processing…" : "Commit Vote"}
-          </button>
-        </div>
+        <Card size="sm">
+          <CardContent className="space-y-3">
+            <h4 className="font-heading text-lg font-normal">Commit Vote</h4>
+            <p className="text-xs text-muted-foreground">
+              Commit ends: {new Date(councilCase.commitEnd * 1000).toLocaleString()}
+            </p>
+            <Alert variant="warning">
+              <AlertDescription>
+                Salt is generated randomly and stored in your browser. Losing it prevents you from revealing your vote.
+              </AlertDescription>
+            </Alert>
+            <div className="flex gap-2">
+              {OUTCOMES.map((o) => (
+                <Button
+                  key={o}
+                  size="xs"
+                  variant={selectedOutcome === o ? "default" : "outline"}
+                  className="flex-1"
+                  onClick={() => setSelectedOutcome(o)}
+                >
+                  {o}
+                </Button>
+              ))}
+            </div>
+            <Button className="w-full" size="sm" onClick={handleCommit} disabled={isPending}>
+              {isPending ? "Processing…" : "Commit Vote"}
+            </Button>
+          </CardContent>
+        </Card>
       )}
 
       {inRevealPhase && (
-        <div className="rounded-lg border border-border p-4 space-y-3">
-          <h4 className="text-sm font-semibold">Reveal Vote</h4>
-          <p className="text-xs text-muted-foreground">
-            Reveal ends: {new Date(councilCase.revealEnd * 1000).toLocaleString()}
-          </p>
-          <button
-            onClick={loadStoredReveal}
-            className="text-xs text-primary underline"
-          >
-            Load from browser storage
-          </button>
-          <div className="flex gap-2">
-            {OUTCOMES.map((o) => (
-              <button
-                key={o}
-                onClick={() => setSelectedOutcome(o)}
-                className={`flex-1 rounded-md border py-1.5 text-xs transition-colors ${
-                  selectedOutcome === o
-                    ? "bg-primary border-primary text-primary-foreground"
-                    : "border-border text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                {o}
-              </button>
-            ))}
-          </div>
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Salt (hex)</label>
-            <input
-              type="text"
-              value={revealSalt}
-              onChange={(e) => setRevealSalt(e.target.value)}
-              placeholder="64-char hex salt"
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-          </div>
-          <button
-            onClick={() =>
-              exec(() =>
-                buildRevealVote(address!, councilCase.caseId, selectedOutcome, revealSalt)
-              )
-            }
-            disabled={isPending || !revealSalt}
-            className="w-full rounded-md bg-primary py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-          >
-            {isPending ? "Processing…" : "Reveal Vote"}
-          </button>
-        </div>
+        <Card size="sm">
+          <CardContent className="space-y-3">
+            <h4 className="font-heading text-lg font-normal">Reveal Vote</h4>
+            <p className="text-xs text-muted-foreground">
+              Reveal ends: {new Date(councilCase.revealEnd * 1000).toLocaleString()}
+            </p>
+            <Button variant="link" size="xs" onClick={loadStoredReveal}>
+              Load from browser storage
+            </Button>
+            <div className="flex gap-2">
+              {OUTCOMES.map((o) => (
+                <Button
+                  key={o}
+                  size="xs"
+                  variant={selectedOutcome === o ? "default" : "outline"}
+                  className="flex-1"
+                  onClick={() => setSelectedOutcome(o)}
+                >
+                  {o}
+                </Button>
+              ))}
+            </div>
+            <div className="space-y-1">
+              <Label className="text-muted-foreground font-medium normal-case tracking-normal">Salt (hex)</Label>
+              <Input
+                type="text"
+                value={revealSalt}
+                onChange={(e) => setRevealSalt(e.target.value)}
+                placeholder="64-char hex salt"
+                className="font-mono text-xs"
+              />
+            </div>
+            <Button
+              className="w-full"
+              size="sm"
+              onClick={() =>
+                exec(() => buildRevealVote(address!, councilCase.caseId, selectedOutcome, revealSalt))
+              }
+              disabled={isPending || !revealSalt}
+            >
+              {isPending ? "Processing…" : "Reveal Vote"}
+            </Button>
+          </CardContent>
+        </Card>
       )}
 
       {isReadyToFinalize && (
-        <div className="rounded-lg border border-border p-4 space-y-3">
-          <h4 className="text-sm font-semibold">Finalize Case</h4>
-          <button
-            onClick={() => exec(() => buildFinalizeCase(address!, councilCase.caseId))}
-            disabled={isPending}
-            className="w-full rounded-md bg-primary py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-          >
-            {isPending ? "Processing…" : "Finalize and Report"}
-          </button>
-        </div>
+        <Card size="sm">
+          <CardContent className="space-y-3">
+            <h4 className="font-heading text-lg font-normal">Finalize Case</h4>
+            <Button
+              className="w-full"
+              size="sm"
+              onClick={() => exec(() => buildFinalizeCase(address!, councilCase.caseId))}
+              disabled={isPending}
+            >
+              {isPending ? "Processing…" : "Finalize and Report"}
+            </Button>
+          </CardContent>
+        </Card>
       )}
 
       {isFinalized && (
-        <div className="rounded-lg border border-border p-4 space-y-3">
-          <h4 className="text-sm font-semibold">Claim Reward</h4>
-          <p className="text-xs text-muted-foreground">
-            Final outcome: <strong>{councilCase.finalOutcome}</strong>
-          </p>
-          <button
-            onClick={() => exec(() => buildClaimReward(address!, councilCase.caseId))}
-            disabled={isPending}
-            className="w-full rounded-md bg-primary py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-          >
-            {isPending ? "Processing…" : "Claim Reward"}
-          </button>
-        </div>
+        <Card size="sm">
+          <CardContent className="space-y-3">
+            <h4 className="font-heading text-lg font-normal">Claim Reward</h4>
+            <p className="text-xs text-muted-foreground">
+              Final outcome: <strong>{councilCase.finalOutcome}</strong>
+            </p>
+            <Button
+              className="w-full"
+              size="sm"
+              onClick={() => exec(() => buildClaimReward(address!, councilCase.caseId))}
+              disabled={isPending}
+            >
+              {isPending ? "Processing…" : "Claim Reward"}
+            </Button>
+          </CardContent>
+        </Card>
       )}
 
       <TxStateDisplay state={txState} />

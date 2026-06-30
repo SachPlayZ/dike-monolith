@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 import type { MarketStatus } from "@/lib/types";
 
 const STATUS_COLORS: Record<MarketStatus, string> = {
@@ -16,13 +17,13 @@ const STATUS_COLORS: Record<MarketStatus, string> = {
 
 export function MarketStatusBadge({ status }: { status: MarketStatus }) {
   return (
-    <span
+    <Badge
       className={cn(
-        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+        "rounded-full px-2 py-0.5 text-xs font-medium normal-case tracking-normal",
         STATUS_COLORS[status]
       )}
     >
       {status}
-    </span>
+    </Badge>
   );
 }

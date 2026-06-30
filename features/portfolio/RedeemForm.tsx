@@ -7,8 +7,9 @@ import {
   buildRedeemCancelled,
 } from "@/lib/contracts/clients";
 import { submitAndPoll, parseDikeError } from "@/lib/stellar/transaction";
-import { parseUsdc, formatUsdc } from "@/lib/stellar/scval";
+import { formatUsdc } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
+import { Button } from "@/components/ui/button";
 import type { UserPosition, TxState, Outcome } from "@/lib/types";
 
 interface RedeemFormProps {
@@ -39,18 +40,8 @@ export function RedeemForm({ position, onSuccess }: RedeemFormProps) {
         setTxState({ status: "building", hash: null, error: null });
 
         const xdr = isResolved
-          ? await buildRedeemResolved(
-              address,
-              position.marketId,
-              outcome,
-              balance
-            )
-          : await buildRedeemCancelled(
-              address,
-              position.marketId,
-              outcome,
-              balance
-            );
+          ? await buildRedeemResolved(address, position.marketId, outcome, balance)
+          : await buildRedeemCancelled(address, position.marketId, outcome, balance);
 
         setTxState({ status: "awaiting-signature", hash: null, error: null });
         const signedXdr = await sign(xdr);
@@ -79,22 +70,24 @@ export function RedeemForm({ position, onSuccess }: RedeemFormProps) {
 
       <div className="flex gap-2">
         {yesBalance > 0n && (
-          <button
+          <Button
+            size="sm"
+            className="flex-1 bg-green-600 hover:bg-green-700 border-green-600 text-white"
             onClick={() => handleRedeem("Yes", yesBalance.toString())}
             disabled={isPending}
-            className="flex-1 rounded-md bg-green-600 py-2 text-xs text-white hover:bg-green-700 transition-colors disabled:opacity-50"
           >
             Redeem YES ({formatUsdc(yesBalance)} USDC)
-          </button>
+          </Button>
         )}
         {noBalance > 0n && (
-          <button
+          <Button
+            size="sm"
+            className="flex-1 bg-red-600 hover:bg-red-700 border-red-600 text-white"
             onClick={() => handleRedeem("No", noBalance.toString())}
             disabled={isPending}
-            className="flex-1 rounded-md bg-red-600 py-2 text-xs text-white hover:bg-red-700 transition-colors disabled:opacity-50"
           >
             Redeem NO ({formatUsdc(noBalance)} USDC)
-          </button>
+          </Button>
         )}
       </div>
 

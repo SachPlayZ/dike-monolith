@@ -12,6 +12,10 @@ import {
 import { submitAndPoll, parseDikeError } from "@/lib/stellar/transaction";
 import { parseUsdc, formatUsdc, applySlippage } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import type { TxState, Outcome } from "@/lib/types";
 
 interface ChildTradeFormProps {
@@ -115,77 +119,75 @@ export function ChildTradeForm({ poolId }: ChildTradeFormProps) {
 
   if (!isConnected) {
     return (
-      <div className="rounded-lg border border-border p-6 text-center">
-        <p className="text-sm text-muted-foreground mb-3">
-          Connect wallet to buy with parent credit
-        </p>
-        <button
-          onClick={connect}
-          className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90"
-        >
-          Connect Wallet
-        </button>
-      </div>
+      <Card size="sm">
+        <CardContent className="text-center space-y-3">
+          <p className="text-sm text-muted-foreground">Connect wallet to buy with parent credit</p>
+          <Button size="sm" onClick={connect}>Connect Wallet</Button>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className="rounded-lg border border-border p-5 space-y-4">
+    <Card size="sm">
+      <CardContent className="space-y-4">
       <div>
-        <h3 className="text-sm font-semibold">Buy with Parent Credit</h3>
+        <h3 className="font-heading text-lg font-normal">Buy with Parent Credit</h3>
         <p className="text-xs text-muted-foreground mt-0.5">
           Use your stake in a parent market as collateral. Max 60% of root stake.
         </p>
       </div>
 
-      <div className="rounded-md bg-amber-500/10 border border-amber-500/30 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+      <div className="bg-amber-500/10 border border-amber-500/30 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
         Child credit encumbers your parent position. Selling or redeeming the parent requires clearing child debt first.
       </div>
 
-      {/* Parent market inputs */}
       <div className="space-y-3">
-        <div>
-          <label className="text-xs text-muted-foreground mb-1 block">Parent Market ID</label>
-          <input
+        <div className="space-y-1">
+          <Label className="text-muted-foreground font-medium normal-case tracking-normal">Parent Market ID</Label>
+          <Input
             type="text"
             placeholder="e.g. 1"
             value={parentMarketId}
             onChange={(e) => { setParentMarketId(e.target.value); setAvailableCredit(null); setQuote(null); }}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
           />
         </div>
 
         <div>
           <label className="text-xs text-muted-foreground mb-1 block">Parent Outcome to Encumber</label>
-          <div className="flex rounded-md border border-border overflow-hidden text-sm">
+          <div className="flex border border-border overflow-hidden">
             {(["Yes", "No"] as const).map((o) => (
-              <button
+              <Button
                 key={o}
-                onClick={() => { setParentOutcome(o); setAvailableCredit(null); setQuote(null); }}
-                className={`flex-1 py-1.5 transition-colors ${
+                size="xs"
+                className={`flex-1 ${
                   parentOutcome === o
                     ? o === "Yes"
-                      ? "bg-green-600 text-white"
-                      : "bg-red-600 text-white"
-                    : "text-muted-foreground hover:bg-muted"
+                      ? "bg-green-600 hover:bg-green-700 border-green-600 text-white"
+                      : "bg-red-600 hover:bg-red-700 border-red-600 text-white"
+                    : ""
                 }`}
+                variant={parentOutcome === o ? "default" : "ghost"}
+                onClick={() => { setParentOutcome(o); setAvailableCredit(null); setQuote(null); }}
               >
                 {o}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
 
-        <button
+        <Button
+          variant="outline"
+          size="xs"
+          className="w-full"
           onClick={handleCheckCredit}
           disabled={creditLoading || !parentMarketId.trim()}
-          className="w-full rounded-md border border-border py-1.5 text-xs hover:bg-muted transition-colors disabled:opacity-50"
         >
           {creditLoading ? "Checking…" : "Check Available Credit"}
-        </button>
+        </Button>
 
         {availableCredit !== null && (
-          <div className="rounded-md bg-muted/50 px-3 py-2 text-xs">
+          <div className="bg-muted/50 px-3 py-2 text-xs">
             <span className="text-muted-foreground">Available credit: </span>
             <span className="font-medium">{formatUsdc(BigInt(availableCredit))} USDC</span>
             {availableCredit === "0" && (
@@ -197,47 +199,43 @@ export function ChildTradeForm({ poolId }: ChildTradeFormProps) {
         )}
       </div>
 
-      {/* Token toggle */}
       <div>
         <label className="text-xs text-muted-foreground mb-1 block">Buy Token</label>
-        <div className="flex rounded-md border border-border overflow-hidden text-sm">
+        <div className="flex border border-border overflow-hidden">
           {(["yes", "no"] as ChildToken[]).map((t) => (
-            <button
+            <Button
               key={t}
-              onClick={() => { setToken(t); setQuote(null); }}
-              className={`flex-1 py-1.5 uppercase transition-colors ${
+              size="xs"
+              className={`flex-1 uppercase ${
                 token === t
                   ? t === "yes"
-                    ? "bg-green-600 text-white"
-                    : "bg-red-600 text-white"
-                  : "text-muted-foreground hover:bg-muted"
+                    ? "bg-green-600 hover:bg-green-700 border-green-600 text-white"
+                    : "bg-red-600 hover:bg-red-700 border-red-600 text-white"
+                  : ""
               }`}
+              variant={token === t ? "default" : "ghost"}
+              onClick={() => { setToken(t); setQuote(null); }}
             >
               {t}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
 
-      {/* Amount */}
-      <div>
-        <label className="text-xs text-muted-foreground mb-1 block">
-          Amount (credit units)
-        </label>
-        <input
+      <div className="space-y-1">
+        <Label className="text-muted-foreground font-medium normal-case tracking-normal">Amount (credit units)</Label>
+        <Input
           type="number"
           min="0"
           step="0.01"
           placeholder="0.00"
           value={amountInput}
           onChange={(e) => { setAmountInput(e.target.value); setQuote(null); }}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
         />
       </div>
 
-      {/* Quote display */}
       {quote && (
-        <div className="rounded-md bg-muted/50 p-3 space-y-1 text-xs">
+        <div className="bg-muted/50 p-3 space-y-1 text-xs">
           <p className="flex justify-between">
             <span className="text-muted-foreground">Estimated out</span>
             <span>{formatUsdc(BigInt(quote.amountOut))} tokens</span>
@@ -252,9 +250,7 @@ export function ChildTradeForm({ poolId }: ChildTradeFormProps) {
           </p>
           <p className="flex justify-between">
             <span className="text-muted-foreground">Min received</span>
-            <span>
-              {formatUsdc(applySlippage(BigInt(quote.amountOut), DEFAULT_SLIPPAGE_BPS))} tokens
-            </span>
+            <span>{formatUsdc(applySlippage(BigInt(quote.amountOut), DEFAULT_SLIPPAGE_BPS))} tokens</span>
           </p>
           <p className="flex justify-between">
             <span className="text-muted-foreground">Deadline</span>
@@ -263,25 +259,28 @@ export function ChildTradeForm({ poolId }: ChildTradeFormProps) {
         </div>
       )}
 
-      {/* Actions */}
       <div className="flex gap-2">
-        <button
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex-1"
           onClick={handleQuote}
           disabled={quoting || !amountInput}
-          className="flex-1 rounded-md border border-border py-2 text-sm hover:bg-muted transition-colors disabled:opacity-50"
         >
           {quoting ? "Quoting…" : "Get Quote"}
-        </button>
-        <button
+        </Button>
+        <Button
+          size="sm"
+          className="flex-1"
           onClick={handleBuy}
           disabled={isPending || !quote || !amountInput || !parentMarketId.trim()}
-          className="flex-1 rounded-md bg-primary py-2 text-sm text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
         >
           {isPending ? "Processing…" : `Buy ${token.toUpperCase()}`}
-        </button>
+        </Button>
       </div>
 
       <TxStateDisplay state={txState} />
-    </div>
+      </CardContent>
+    </Card>
   );
 }

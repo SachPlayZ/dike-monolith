@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useWallet } from "@/lib/contexts/wallet";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const NAV_LINKS = [
@@ -16,50 +17,45 @@ const NAV_LINKS = [
 
 export function AppNav() {
   const pathname = usePathname();
-  const { address, isConnected, isConnecting, connect, disconnect } =
-    useWallet();
+  const { address, isConnected, isConnecting, connect, disconnect } = useWallet();
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-md">
+    <header className="sticky top-0 z-40 border-b border-white/10 bg-background/80 backdrop-blur-md">
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
-        <Link href="/" className="font-bold tracking-widest text-sm">
+        <Link
+          href="/"
+          className="font-heading text-2xl font-normal tracking-wide text-foreground hover:opacity-80 transition-opacity"
+        >
           DIKE
         </Link>
 
-        <nav className="hidden md:flex items-center gap-6 text-sm">
+        <nav className="hidden md:flex items-center gap-6">
           {NAV_LINKS.map((link) => (
             <Link
               key={link.href}
               href={link.href}
               className={cn(
-                "transition-colors hover:text-foreground",
+                "relative text-sm tracking-wide transition-colors duration-300 hover:text-foreground group",
                 pathname.startsWith(link.href)
-                  ? "text-foreground font-medium"
-                  : "text-muted-foreground"
+                  ? "text-foreground"
+                  : "text-foreground/50"
               )}
             >
               {link.label}
+              <span className="absolute -bottom-0.5 left-0 w-0 h-px bg-foreground transition-all duration-300 group-hover:w-full" />
             </Link>
           ))}
         </nav>
 
         <div className="flex items-center gap-2">
           {isConnected && address ? (
-            <button
-              onClick={disconnect}
-              className="rounded-md border border-border px-3 py-1 text-xs font-mono hover:bg-muted transition-colors"
-              title={address}
-            >
+            <Button variant="outline" size="xs" onClick={disconnect} title={address}>
               {address.slice(0, 4)}…{address.slice(-4)}
-            </button>
+            </Button>
           ) : (
-            <button
-              onClick={connect}
-              disabled={isConnecting}
-              className="rounded-md bg-primary px-3 py-1 text-xs text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-60"
-            >
-              {isConnecting ? "Connecting…" : "Connect Wallet"}
-            </button>
+            <Button size="xs" onClick={connect} disabled={isConnecting}>
+              {isConnecting ? "Connecting…" : "Connect"}
+            </Button>
           )}
         </div>
       </div>

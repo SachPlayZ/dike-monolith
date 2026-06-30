@@ -13,6 +13,10 @@ import {
 import { submitAndPoll, parseDikeError } from "@/lib/stellar/transaction";
 import { parseUsdc, formatUsdc, applySlippage } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import type { TxState } from "@/lib/types";
 
 type Side = "buy" | "sell";
@@ -24,8 +28,8 @@ interface TradeFormProps {
   marketQuestion: string;
 }
 
-const DEFAULT_SLIPPAGE_BPS = 50; // 0.5%
-const TRADE_DEADLINE_SECS = 300; // 5 min
+const DEFAULT_SLIPPAGE_BPS = 50;
+const TRADE_DEADLINE_SECS = 300;
 
 export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) {
   const { address, isConnected, connect, sign } = useWallet();
@@ -48,7 +52,6 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
           ? await ammQuoteBuyYes(address, poolId, rawIn)
           : await ammQuoteBuyNo(address, poolId, rawIn);
       } else {
-        // For sell, quote is just the inverse direction
         q = token === "yes"
           ? await ammQuoteBuyNo(address, poolId, rawIn)
           : await ammQuoteBuyYes(address, poolId, rawIn);
@@ -66,10 +69,7 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
     startTransition(async () => {
       try {
         const rawIn = parseUsdc(amountInput).toString();
-        const minOut = applySlippage(
-          BigInt(quote.amountOut),
-          DEFAULT_SLIPPAGE_BPS
-        ).toString();
+        const minOut = applySlippage(BigInt(quote.amountOut), DEFAULT_SLIPPAGE_BPS).toString();
 
         setTxState({ status: "building", hash: null, error: null });
 
@@ -101,79 +101,68 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
 
   if (!isConnected) {
     return (
-      <div className="rounded-lg border border-border p-6 text-center">
-        <p className="text-sm text-muted-foreground mb-3">
-          Connect your wallet to trade
-        </p>
-        <button
-          onClick={connect}
-          className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90"
-        >
-          Connect Wallet
-        </button>
-      </div>
+      <Card size="sm">
+        <CardContent className="text-center space-y-3">
+          <p className="text-sm text-muted-foreground">Connect your wallet to trade</p>
+          <Button size="sm" onClick={connect}>Connect Wallet</Button>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className="rounded-lg border border-border p-5 space-y-4">
-      <h3 className="text-sm font-semibold">Trade</h3>
+    <Card size="sm">
+      <CardContent className="space-y-4">
+      <h3 className="font-heading text-lg font-normal">Trade</h3>
 
-      {/* Side toggle */}
-      <div className="flex rounded-md border border-border overflow-hidden text-sm">
+      <div className="flex border border-border overflow-hidden">
         {(["buy", "sell"] as Side[]).map((s) => (
-          <button
+          <Button
             key={s}
+            size="xs"
+            variant={side === s ? "default" : "ghost"}
+            className="flex-1 capitalize"
             onClick={() => { setSide(s); setQuote(null); }}
-            className={`flex-1 py-1.5 capitalize transition-colors ${
-              side === s
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted"
-            }`}
           >
             {s}
-          </button>
+          </Button>
         ))}
       </div>
 
-      {/* Token toggle */}
-      <div className="flex rounded-md border border-border overflow-hidden text-sm">
+      <div className="flex border border-border overflow-hidden">
         {(["yes", "no"] as Token[]).map((t) => (
-          <button
+          <Button
             key={t}
-            onClick={() => { setToken(t); setQuote(null); }}
-            className={`flex-1 py-1.5 uppercase transition-colors ${
+            size="xs"
+            className={`flex-1 uppercase ${
               token === t
                 ? t === "yes"
-                  ? "bg-green-600 text-white"
-                  : "bg-red-600 text-white"
-                : "text-muted-foreground hover:bg-muted"
+                  ? "bg-green-600 hover:bg-green-700 border-green-600 text-white"
+                  : "bg-red-600 hover:bg-red-700 border-red-600 text-white"
+                : ""
             }`}
+            variant={token === t ? "default" : "ghost"}
+            onClick={() => { setToken(t); setQuote(null); }}
           >
             {t}
-          </button>
+          </Button>
         ))}
       </div>
 
-      {/* Amount input */}
-      <div>
-        <label className="text-xs text-muted-foreground mb-1 block">
-          Amount (USDC)
-        </label>
-        <input
+      <div className="space-y-1">
+        <Label className="text-muted-foreground font-medium normal-case tracking-normal">Amount (USDC)</Label>
+        <Input
           type="number"
           min="0"
           step="0.01"
           placeholder="0.00"
           value={amountInput}
           onChange={(e) => { setAmountInput(e.target.value); setQuote(null); }}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
         />
       </div>
 
-      {/* Quote */}
       {quote && (
-        <div className="rounded-md bg-muted/50 p-3 space-y-1 text-xs">
+        <div className="bg-muted/50 p-3 space-y-1 text-xs">
           <p className="flex justify-between">
             <span className="text-muted-foreground">Estimated out</span>
             <span>{formatUsdc(BigInt(quote.amountOut))} USDC</span>
@@ -188,9 +177,7 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
           </p>
           <p className="flex justify-between">
             <span className="text-muted-foreground">Min received</span>
-            <span>
-              {formatUsdc(applySlippage(BigInt(quote.amountOut), DEFAULT_SLIPPAGE_BPS))} USDC
-            </span>
+            <span>{formatUsdc(applySlippage(BigInt(quote.amountOut), DEFAULT_SLIPPAGE_BPS))} USDC</span>
           </p>
           <p className="flex justify-between">
             <span className="text-muted-foreground">Deadline</span>
@@ -199,27 +186,30 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
         </div>
       )}
 
-      {/* Actions */}
       <div className="flex gap-2">
-        <button
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex-1"
           onClick={handleQuote}
           disabled={quoting || !amountInput}
-          className="flex-1 rounded-md border border-border py-2 text-sm hover:bg-muted transition-colors disabled:opacity-50"
         >
           {quoting ? "Quoting…" : "Get Quote"}
-        </button>
-        <button
+        </Button>
+        <Button
+          size="sm"
+          className="flex-1"
           onClick={handleTrade}
           disabled={isPending || !quote || !amountInput}
-          className="flex-1 rounded-md bg-primary py-2 text-sm text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
         >
           {isPending
             ? "Processing…"
             : `${side === "buy" ? "Buy" : "Sell"} ${token.toUpperCase()}`}
-        </button>
+        </Button>
       </div>
 
       <TxStateDisplay state={txState} />
-    </div>
+      </CardContent>
+    </Card>
   );
 }

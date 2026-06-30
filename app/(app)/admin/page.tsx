@@ -5,6 +5,8 @@ import { PageLoader } from "@/components/data-state/LoadingSpinner";
 import { EmptyState } from "@/components/data-state/EmptyState";
 import { ServiceUnavailableError } from "@/lib/api/client";
 
+export const dynamic = "force-dynamic";
+
 export const metadata = {
   title: "Admin — DIKE",
 };
@@ -31,7 +33,7 @@ export default function AdminPage() {
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Admin / Governance</h1>
+        <h1 className="font-heading text-3xl font-normal tracking-tight">Admin / Governance</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Protocol configuration, timelock actions, and module state. Read-only for non-admin addresses.
         </p>
