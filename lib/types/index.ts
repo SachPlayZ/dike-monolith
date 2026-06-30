@@ -163,6 +163,16 @@ export interface AdminState {
   councilMembers: string[];
 }
 
+export interface WalletPermissions {
+  address: string;
+  canResolve: boolean;
+  canCouncil: boolean;
+  canAdmin: boolean;
+  isApprovedCreator: boolean;
+  isCouncilMember: boolean;
+  isAdmin: boolean;
+}
+
 export type TxStatus =
   | "idle"
   | "building"

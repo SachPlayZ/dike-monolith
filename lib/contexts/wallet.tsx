@@ -17,12 +17,16 @@ import {
   initWalletKit,
 } from "@/lib/stellar/wallet";
 import { networkConfig } from "@/lib/stellar/config";
+import { fetchWalletPermissions } from "@/lib/api/authz";
+import type { WalletPermissions } from "@/lib/types";
 
 interface WalletContextType {
   address: string | null;
   isConnected: boolean;
   isConnecting: boolean;
   networkError: string | null;
+  permissions: WalletPermissions | null;
+  permissionsLoading: boolean;
   connect: () => Promise<void>;
   disconnect: () => void;
   sign: (xdr: string) => Promise<string>;
@@ -36,6 +40,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [address, setAddress] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [networkError, setNetworkError] = useState<string | null>(null);
+  const [permissions, setPermissions] = useState<WalletPermissions | null>(null);
 
   // Restore persisted address and validate network on mount
   useEffect(() => {
@@ -82,6 +87,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const disconnect = useCallback(() => {
     kitDisconnect().catch(() => {});
     setAddress(null);
+    setPermissions(null);
     sessionStorage.removeItem(ADDRESS_KEY);
   }, []);
 
@@ -102,6 +108,28 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [address]
   );
 
+  useEffect(() => {
+    if (!address) return;
+
+    let cancelled = false;
+
+    void fetchWalletPermissions(address)
+      .then((nextPermissions) => {
+        if (cancelled) return;
+        setPermissions(nextPermissions);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPermissions(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [address]);
+
+  const permissionsLoading = Boolean(address) && permissions?.address !== address;
+
   return (
     <WalletContext.Provider
       value={{
@@ -109,6 +137,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         isConnected: Boolean(address),
         isConnecting,
         networkError,
+        permissions,
+        permissionsLoading,
         connect,
         disconnect,
         sign,

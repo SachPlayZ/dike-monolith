@@ -3,6 +3,7 @@ import { fetchGovernanceState, fetchTimelockActions } from "@/lib/api/admin";
 import { GovernancePanel } from "@/features/admin/GovernancePanel";
 import { PageLoader } from "@/components/data-state/LoadingSpinner";
 import { EmptyState } from "@/components/data-state/EmptyState";
+import { SectionGate } from "@/components/auth/SectionGate";
 import { ServiceUnavailableError } from "@/lib/api/client";
 
 export const dynamic = "force-dynamic";
@@ -48,9 +49,15 @@ export default function AdminPage() {
         </p>
       </div>
 
-      <Suspense fallback={<PageLoader />}>
-        <AdminContent />
-      </Suspense>
+      <SectionGate
+        permission="canAdmin"
+        title="admin governance"
+        description="Connect a governance-admin wallet to access protocol administration."
+      >
+        <Suspense fallback={<PageLoader />}>
+          <AdminContent />
+        </Suspense>
+      </SectionGate>
     </div>
   );
 }

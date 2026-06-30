@@ -10,14 +10,17 @@ const NAV_LINKS = [
   { href: "/predictions", label: "Markets" },
   { href: "/dashboard", label: "Portfolio" },
   { href: "/create-predic", label: "Create" },
-  { href: "/resolve", label: "Resolve" },
-  { href: "/council", label: "Council" },
-  { href: "/admin", label: "Admin" },
+  { href: "/resolve", label: "Resolve", permission: "canResolve" as const },
+  { href: "/council", label: "Council", permission: "canCouncil" as const },
+  { href: "/admin", label: "Admin", permission: "canAdmin" as const },
 ];
 
 export function AppNav() {
   const pathname = usePathname();
-  const { address, isConnected, isConnecting, connect, disconnect } = useWallet();
+  const { address, isConnected, isConnecting, connect, disconnect, permissions } = useWallet();
+  const visibleLinks = NAV_LINKS.filter(
+    (link) => !link.permission || Boolean(permissions?.[link.permission])
+  );
 
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-background/80 backdrop-blur-md">
@@ -30,7 +33,7 @@ export function AppNav() {
         </Link>
 
         <nav className="hidden md:flex items-center gap-6">
-          {NAV_LINKS.map((link) => (
+          {visibleLinks.map((link) => (
             <Link
               key={link.href}
               href={link.href}

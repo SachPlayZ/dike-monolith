@@ -5,6 +5,7 @@ import { VoteForm } from "@/features/council/VoteForm";
 import { PageLoader } from "@/components/data-state/LoadingSpinner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { EmptyState } from "@/components/data-state/EmptyState";
+import { SectionGate } from "@/components/auth/SectionGate";
 import { ServiceUnavailableError } from "@/lib/api/client";
 import type { CouncilCase } from "@/lib/types";
 
@@ -62,15 +63,21 @@ export default function CouncilPage() {
         </p>
       </div>
 
-      <Alert variant="warning">
-        <AlertDescription>
-          Commit-reveal voting: generate a random salt when committing, reveal it in the reveal phase. Losing your salt prevents you from revealing your vote.
-        </AlertDescription>
-      </Alert>
+      <SectionGate
+        permission="canCouncil"
+        title="council cases"
+        description="Connect a council-member wallet to access commit-reveal voting."
+      >
+        <Alert variant="warning">
+          <AlertDescription>
+            Commit-reveal voting: generate a random salt when committing, reveal it in the reveal phase. Losing your salt prevents you from revealing your vote.
+          </AlertDescription>
+        </Alert>
 
-      <Suspense fallback={<PageLoader />}>
+        <Suspense fallback={<PageLoader />}>
           <CouncilCaseList />
-      </Suspense>
+        </Suspense>
+      </SectionGate>
     </div>
   );
 }

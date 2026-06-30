@@ -6,6 +6,7 @@ import { ResolutionPanel } from "@/features/resolution/ResolutionPanel";
 import { PageLoader } from "@/components/data-state/LoadingSpinner";
 import { EmptyState } from "@/components/data-state/EmptyState";
 import { Card, CardContent } from "@/components/ui/card";
+import { SectionGate } from "@/components/auth/SectionGate";
 import { ServiceUnavailableError } from "@/lib/api/client";
 import type { MarketData, MarketStatus } from "@/lib/types";
 
@@ -83,9 +84,15 @@ export default function ResolvePage() {
         </p>
       </div>
 
-      <Suspense fallback={<PageLoader />}>
+      <SectionGate
+        permission="canResolve"
+        title="resolution workbench"
+        description="Connect wallet to access market resolution workflows."
+      >
+        <Suspense fallback={<PageLoader />}>
           <ResolutionWorkbench />
-      </Suspense>
+        </Suspense>
+      </SectionGate>
     </div>
   );
 }
