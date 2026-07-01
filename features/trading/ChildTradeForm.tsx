@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
+import { cn } from "@/lib/utils";
 import { useWallet } from "@/lib/contexts/wallet";
 import {
   ammQuoteBuyYes,
@@ -9,17 +10,16 @@ import {
   buildAmmBuyChildNo,
   vaultGetChildAvail,
 } from "@/lib/contracts/clients";
+import { apiGet } from "@/lib/api/client";
+import { normalizeMarketData } from "@/lib/api/normalizers";
 import { submitAndPoll, parseDikeError } from "@/lib/stellar/transaction";
 import { parseUsdc, formatUsdc, applySlippage } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import type { TxState, Outcome } from "@/lib/types";
+import type { TxState, Outcome, MarketData } from "@/lib/types";
 
 interface ChildTradeFormProps {
   poolId: string;
+  currentMarketId: string;
 }
 
 const DEFAULT_SLIPPAGE_BPS = 50;
@@ -27,8 +27,10 @@ const TRADE_DEADLINE_SECS = 300;
 
 type ChildToken = "yes" | "no";
 
-export function ChildTradeForm({ poolId }: ChildTradeFormProps) {
+export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps) {
   const { address, isConnected, connect, sign } = useWallet();
+  const [expanded, setExpanded] = useState(false);
+  const [markets, setMarkets] = useState<MarketData[]>([]);
   const [parentMarketId, setParentMarketId] = useState("");
   const [parentOutcome, setParentOutcome] = useState<"Yes" | "No">("Yes");
   const [availableCredit, setAvailableCredit] = useState<string | null>(null);
@@ -40,73 +42,76 @@ export function ChildTradeForm({ poolId }: ChildTradeFormProps) {
   const [txState, setTxState] = useState<TxState>({ status: "idle", hash: null, error: null });
   const [isPending, startTransition] = useTransition();
 
-  async function handleCheckCredit() {
-    if (!address || !parentMarketId.trim()) return;
+  useEffect(() => {
+    if (!expanded) return;
+    apiGet<{ items: Record<string, unknown>[] }>("/markets")
+      .then((res) => {
+        const live = res.items
+          .map((r) => normalizeMarketData(r))
+          .filter((m) => m.status === "Live" && m.marketId !== currentMarketId);
+        setMarkets(live);
+      })
+      .catch(() => {});
+  }, [expanded, currentMarketId]);
+
+  useEffect(() => {
+    if (!address || !parentMarketId) {
+      setAvailableCredit(null);
+      return;
+    }
     setCreditLoading(true);
     setAvailableCredit(null);
-    try {
-      const avail = await vaultGetChildAvail(address, address, parentMarketId.trim(), parentOutcome as Outcome);
-      setAvailableCredit(avail);
-    } catch (e) {
-      setTxState({ status: "failed", hash: null, error: parseDikeError(e) });
-    } finally {
-      setCreditLoading(false);
-    }
-  }
+    const timer = setTimeout(async () => {
+      try {
+        const avail = await vaultGetChildAvail(address, address, parentMarketId, parentOutcome as Outcome);
+        setAvailableCredit(avail);
+      } catch {
+        setAvailableCredit(null);
+      } finally {
+        setCreditLoading(false);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [address, parentMarketId, parentOutcome]);
 
-  async function handleQuote() {
-    if (!address || !amountInput) return;
-    setQuoting(true);
-    try {
-      const rawIn = parseUsdc(amountInput).toString();
-      const q =
-        token === "yes"
-          ? await ammQuoteBuyYes(address, poolId, rawIn)
-          : await ammQuoteBuyNo(address, poolId, rawIn);
-      setQuote({ amountOut: q.amountOut, feeBps: q.feeBps });
-    } catch (e) {
-      setTxState({ status: "failed", hash: null, error: parseDikeError(e) });
-    } finally {
-      setQuoting(false);
+  useEffect(() => {
+    if (!address || !amountInput || parseFloat(amountInput) <= 0) {
+      setQuote(null);
+      return;
     }
-  }
+    setQuoting(true);
+    const timer = setTimeout(async () => {
+      try {
+        const rawIn = parseUsdc(amountInput).toString();
+        const q =
+          token === "yes"
+            ? await ammQuoteBuyYes(address, poolId, rawIn)
+            : await ammQuoteBuyNo(address, poolId, rawIn);
+        setQuote({ amountOut: q.amountOut, feeBps: q.feeBps });
+      } catch {
+        setQuote(null);
+      } finally {
+        setQuoting(false);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [address, amountInput, token, poolId]);
 
   async function handleBuy() {
-    if (!address || !amountInput || !quote || !parentMarketId.trim()) return;
+    if (!address || !amountInput || !quote || !parentMarketId) return;
     startTransition(async () => {
       try {
         const rawIn = parseUsdc(amountInput).toString();
         const minOut = applySlippage(BigInt(quote.amountOut), DEFAULT_SLIPPAGE_BPS).toString();
-
         setTxState({ status: "building", hash: null, error: null });
-
         const xdr =
           token === "yes"
-            ? await buildAmmBuyChildYes(
-                address,
-                parentMarketId.trim(),
-                parentOutcome as Outcome,
-                poolId,
-                rawIn,
-                minOut,
-                TRADE_DEADLINE_SECS
-              )
-            : await buildAmmBuyChildNo(
-                address,
-                parentMarketId.trim(),
-                parentOutcome as Outcome,
-                poolId,
-                rawIn,
-                minOut,
-                TRADE_DEADLINE_SECS
-              );
-
+            ? await buildAmmBuyChildYes(address, parentMarketId, parentOutcome as Outcome, poolId, rawIn, minOut, TRADE_DEADLINE_SECS)
+            : await buildAmmBuyChildNo(address, parentMarketId, parentOutcome as Outcome, poolId, rawIn, minOut, TRADE_DEADLINE_SECS);
         setTxState({ status: "awaiting-signature", hash: null, error: null });
         const signedXdr = await sign(xdr);
-
         setTxState({ status: "submitting", hash: null, error: null });
         const result = await submitAndPoll(signedXdr);
-
         setTxState({ status: "success", hash: result.hash, error: null });
         setAmountInput("");
         setQuote(null);
@@ -119,168 +124,195 @@ export function ChildTradeForm({ poolId }: ChildTradeFormProps) {
 
   if (!isConnected) {
     return (
-      <Card size="sm">
-        <CardContent className="text-center space-y-3">
-          <p className="text-sm text-muted-foreground">Connect wallet to buy with parent credit</p>
-          <Button size="sm" onClick={connect}>Connect Wallet</Button>
-        </CardContent>
-      </Card>
+      <div className="rounded-2xl bg-white/[0.03] border border-white/[0.07] px-5 py-4 text-center space-y-3">
+        <p className="text-xs text-white/40">Connect wallet to use parent credit</p>
+        <button
+          onClick={connect}
+          className="px-4 py-2 rounded-full bg-orange-500/15 border border-orange-500/25 text-orange-300 text-xs font-bold uppercase tracking-widest hover:bg-orange-500/25 transition-all duration-300"
+        >
+          Connect Wallet
+        </button>
+      </div>
     );
   }
 
+  const canBuy = Boolean(quote && amountInput && parentMarketId && !isPending && !quoting);
+
   return (
-    <Card size="sm">
-      <CardContent className="space-y-4">
-      <div>
-        <h3 className="font-heading text-lg font-normal">Buy with Parent Credit</h3>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Use your stake in a parent market as collateral. Max 60% of root stake.
-        </p>
-      </div>
-
-      <div className="bg-amber-500/10 border border-amber-500/30 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-        Child credit encumbers your parent position. Selling or redeeming the parent requires clearing child debt first.
-      </div>
-
-      <div className="space-y-3">
-        <div className="space-y-1">
-          <Label className="text-muted-foreground font-medium normal-case tracking-normal">Parent Market ID</Label>
-          <Input
-            type="text"
-            placeholder="e.g. 1"
-            value={parentMarketId}
-            onChange={(e) => { setParentMarketId(e.target.value); setAvailableCredit(null); setQuote(null); }}
-          />
+    <div className="rounded-2xl bg-white/[0.03] border border-white/[0.07] overflow-hidden">
+      {/* Collapsible header */}
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full px-5 py-4 flex items-center justify-between border-b border-white/[0.05] hover:bg-white/[0.02] transition-colors duration-200"
+      >
+        <div className="text-left">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/30">Buy with Parent Credit</p>
+          <p className="text-xs text-white/40 mt-0.5">Use parent stake as collateral</p>
         </div>
+        <span className={cn(
+          "text-white/30 text-sm transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
+          expanded && "rotate-180"
+        )}>
+          ↓
+        </span>
+      </button>
 
-        <div>
-          <label className="text-xs text-muted-foreground mb-1 block">Parent Outcome to Encumber</label>
-          <div className="flex border border-border overflow-hidden">
-            {(["Yes", "No"] as const).map((o) => (
-              <Button
-                key={o}
-                size="xs"
-                className={`flex-1 ${
-                  parentOutcome === o
-                    ? o === "Yes"
-                      ? "bg-green-600 hover:bg-green-700 border-green-600 text-white"
-                      : "bg-red-600 hover:bg-red-700 border-red-600 text-white"
-                    : ""
-                }`}
-                variant={parentOutcome === o ? "default" : "ghost"}
-                onClick={() => { setParentOutcome(o); setAvailableCredit(null); setQuote(null); }}
-              >
-                {o}
-              </Button>
-            ))}
+      {expanded && (
+        <div className="p-5 space-y-4 animate-in fade-in-0 slide-in-from-top-2 duration-200">
+          {/* Warning */}
+          <div className="px-4 py-3 rounded-xl bg-amber-500/[0.07] border border-amber-500/[0.18] text-xs text-amber-300/80">
+            Credit encumbers your parent position. Clear child debt before selling parent.
           </div>
-        </div>
 
-        <Button
-          variant="outline"
-          size="xs"
-          className="w-full"
-          onClick={handleCheckCredit}
-          disabled={creditLoading || !parentMarketId.trim()}
-        >
-          {creditLoading ? "Checking…" : "Check Available Credit"}
-        </Button>
-
-        {availableCredit !== null && (
-          <div className="bg-muted/50 px-3 py-2 text-xs">
-            <span className="text-muted-foreground">Available credit: </span>
-            <span className="font-medium">{formatUsdc(BigInt(availableCredit))} USDC</span>
-            {availableCredit === "0" && (
-              <p className="text-amber-600 dark:text-amber-400 mt-1">
-                No credit available. You need a root stake in this parent market outcome.
-              </p>
+          {/* Parent market selector */}
+          <div className="space-y-1.5">
+            <p className="text-[10px] uppercase tracking-[0.12em] text-white/30">Parent Market</p>
+            <div className="rounded-xl bg-white/[0.04] border border-white/[0.08] overflow-hidden">
+              <select
+                value={parentMarketId}
+                onChange={(e) => setParentMarketId(e.target.value)}
+                className="w-full bg-transparent px-4 py-3 text-xs text-white/70 outline-none cursor-pointer [&>option]:bg-[#1a1208] [&>option]:text-white"
+              >
+                <option value="">Select a parent market…</option>
+                {markets.map((m) => (
+                  <option key={m.marketId} value={m.marketId}>
+                    {m.config.question.length > 55
+                      ? m.config.question.slice(0, 55) + "…"
+                      : m.config.question}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {markets.length === 0 && expanded && (
+              <p className="text-[10px] text-white/25">No other live markets.</p>
             )}
           </div>
-        )}
-      </div>
 
-      <div>
-        <label className="text-xs text-muted-foreground mb-1 block">Buy Token</label>
-        <div className="flex border border-border overflow-hidden">
-          {(["yes", "no"] as ChildToken[]).map((t) => (
-            <Button
-              key={t}
-              size="xs"
-              className={`flex-1 uppercase ${
-                token === t
-                  ? t === "yes"
-                    ? "bg-green-600 hover:bg-green-700 border-green-600 text-white"
-                    : "bg-red-600 hover:bg-red-700 border-red-600 text-white"
-                  : ""
-              }`}
-              variant={token === t ? "default" : "ghost"}
-              onClick={() => { setToken(t); setQuote(null); }}
-            >
-              {t}
-            </Button>
-          ))}
-        </div>
-      </div>
+          {parentMarketId && (
+            <>
+              {/* Parent outcome */}
+              <div className="space-y-1.5">
+                <p className="text-[10px] uppercase tracking-[0.12em] text-white/30">Encumber Outcome</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["Yes", "No"] as const).map((o) => (
+                    <button
+                      key={o}
+                      onClick={() => setParentOutcome(o)}
+                      className={cn(
+                        "py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all duration-300 border",
+                        parentOutcome === o && o === "Yes"
+                          ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-400"
+                          : parentOutcome === o && o === "No"
+                          ? "bg-rose-500/15 border-rose-500/40 text-rose-400"
+                          : "bg-transparent border-white/[0.06] text-white/30 hover:text-white/60"
+                      )}
+                    >
+                      {o}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-      <div className="space-y-1">
-        <Label className="text-muted-foreground font-medium normal-case tracking-normal">Amount (credit units)</Label>
-        <Input
-          type="number"
-          min="0"
-          step="0.01"
-          placeholder="0.00"
-          value={amountInput}
-          onChange={(e) => { setAmountInput(e.target.value); setQuote(null); }}
-        />
-      </div>
+              {/* Credit display */}
+              <div className="px-4 py-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                {creditLoading ? (
+                  <p className="text-xs text-white/30 animate-pulse">Checking credit…</p>
+                ) : availableCredit !== null ? (
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-white/40">Available credit</span>
+                    <span className={cn(
+                      "text-sm font-semibold font-mono",
+                      availableCredit === "0" ? "text-amber-400" : "text-white/80"
+                    )}>
+                      {formatUsdc(BigInt(availableCredit))} USDC
+                    </span>
+                  </div>
+                ) : (
+                  <p className="text-xs text-white/25">Select market to check credit</p>
+                )}
+              </div>
+            </>
+          )}
 
-      {quote && (
-        <div className="bg-muted/50 p-3 space-y-1 text-xs">
-          <p className="flex justify-between">
-            <span className="text-muted-foreground">Estimated out</span>
-            <span>{formatUsdc(BigInt(quote.amountOut))} tokens</span>
-          </p>
-          <p className="flex justify-between">
-            <span className="text-muted-foreground">Fee</span>
-            <span>{quote.feeBps / 100}%</span>
-          </p>
-          <p className="flex justify-between">
-            <span className="text-muted-foreground">Slippage tolerance</span>
-            <span>{DEFAULT_SLIPPAGE_BPS / 100}%</span>
-          </p>
-          <p className="flex justify-between">
-            <span className="text-muted-foreground">Min received</span>
-            <span>{formatUsdc(applySlippage(BigInt(quote.amountOut), DEFAULT_SLIPPAGE_BPS))} tokens</span>
-          </p>
-          <p className="flex justify-between">
-            <span className="text-muted-foreground">Deadline</span>
-            <span>{TRADE_DEADLINE_SECS / 60} min</span>
-          </p>
+          {/* Buy token */}
+          <div className="space-y-1.5">
+            <p className="text-[10px] uppercase tracking-[0.12em] text-white/30">Buy Token</p>
+            <div className="grid grid-cols-2 gap-2">
+              {(["yes", "no"] as ChildToken[]).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setToken(t)}
+                  className={cn(
+                    "py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all duration-300 border",
+                    t === "yes"
+                      ? token === "yes"
+                        ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-400"
+                        : "bg-transparent border-white/[0.06] text-white/30 hover:text-emerald-400/60"
+                      : token === "no"
+                      ? "bg-rose-500/15 border-rose-500/40 text-rose-400"
+                      : "bg-transparent border-white/[0.06] text-white/30 hover:text-rose-400/60"
+                  )}
+                >
+                  {t.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Amount input */}
+          <div className={cn(
+            "rounded-xl border px-4 py-3.5 transition-all duration-200",
+            "bg-white/[0.04] border-white/[0.08] focus-within:border-white/[0.16] focus-within:bg-white/[0.06]"
+          )}>
+            <p className="text-[10px] uppercase tracking-[0.12em] text-white/30 mb-2">Amount (credit units)</p>
+            <div className="flex items-baseline gap-2">
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0"
+                value={amountInput}
+                onChange={(e) => setAmountInput(e.target.value)}
+                className="flex-1 bg-transparent text-2xl font-semibold text-white placeholder-white/15 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none w-full min-w-0"
+              />
+              <span className="text-sm text-white/30 shrink-0">USDC</span>
+            </div>
+            {quoting && <p className="text-[10px] text-white/30 mt-1.5 animate-pulse">Fetching quote…</p>}
+          </div>
+
+          {/* Quote */}
+          {quote && (
+            <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 space-y-2 animate-in fade-in-0 slide-in-from-top-2 duration-300">
+              <div className="flex justify-between text-xs">
+                <span className="text-white/35">Estimated out</span>
+                <span className="text-white/80 font-medium">{formatUsdc(BigInt(quote.amountOut))} tokens</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-white/35">Min received</span>
+                <span className="text-white/50">{formatUsdc(applySlippage(BigInt(quote.amountOut), DEFAULT_SLIPPAGE_BPS))} tokens</span>
+              </div>
+            </div>
+          )}
+
+          {/* CTA */}
+          <button
+            onClick={handleBuy}
+            disabled={!canBuy}
+            className={cn(
+              "w-full py-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.98]",
+              canBuy && token === "yes"
+                ? "bg-emerald-500/20 border border-emerald-500/35 text-emerald-300 hover:bg-emerald-500/30"
+                : canBuy && token === "no"
+                ? "bg-rose-500/20 border border-rose-500/35 text-rose-300 hover:bg-rose-500/30"
+                : "bg-white/[0.04] border border-white/[0.07] text-white/25 cursor-not-allowed"
+            )}
+          >
+            {isPending ? "Processing…" : quoting ? "Quoting…" : `Buy ${token.toUpperCase()}`}
+          </button>
+
+          <TxStateDisplay state={txState} />
         </div>
       )}
-
-      <div className="flex gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          className="flex-1"
-          onClick={handleQuote}
-          disabled={quoting || !amountInput}
-        >
-          {quoting ? "Quoting…" : "Get Quote"}
-        </Button>
-        <Button
-          size="sm"
-          className="flex-1"
-          onClick={handleBuy}
-          disabled={isPending || !quote || !amountInput || !parentMarketId.trim()}
-        >
-          {isPending ? "Processing…" : `Buy ${token.toUpperCase()}`}
-        </Button>
-      </div>
-
-      <TxStateDisplay state={txState} />
-      </CardContent>
-    </Card>
+    </div>
   );
 }

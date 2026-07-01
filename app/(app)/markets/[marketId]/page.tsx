@@ -6,12 +6,13 @@ import { MarketStatusBadge } from "@/features/market/MarketStatusBadge";
 import { TradeForm } from "@/features/trading/TradeForm";
 import { LiquidityForm } from "@/features/trading/LiquidityForm";
 import { ChildTradeForm } from "@/features/trading/ChildTradeForm";
+import { UserPositionPanel } from "@/features/trading/UserPositionPanel";
 import { ResolutionPanel } from "@/features/resolution/ResolutionPanel";
 import { PageLoader } from "@/components/data-state/LoadingSpinner";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ServiceUnavailableError } from "@/lib/api/client";
 import { formatUsdc, impliedYesBps } from "@/lib/stellar/scval";
+import { cn } from "@/lib/utils";
 
 interface PageProps {
   params: Promise<{ marketId: string }>;
@@ -44,31 +45,59 @@ async function MarketDetailContent({ marketId }: { marketId: string }) {
 
   const isTradeable = market.status === "Live";
   const yesBps = impliedYesBps(market.yesReserve, market.noReserve);
+  const yesPercent = yesBps / 100;
+  const noPercent = 100 - yesPercent;
   const expiry = new Date(market.config.expiry * 1000);
+  const hasReserves = market.yesReserve !== "0" || market.noReserve !== "0";
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
-      {/* Left: Market Info */}
-      <div className="lg:col-span-2 space-y-6">
-        <Card size="sm">
-          <CardContent className="space-y-4">
-            <div className="flex items-start gap-3 justify-between">
-              <h1 className="text-lg font-semibold leading-snug">
-                {market.config.question}
-              </h1>
-              <MarketStatusBadge status={market.status} />
+      {/* ── Left: Market Info ── */}
+      <div className="lg:col-span-2 space-y-4">
+
+        {/* Market question card */}
+        <div className="rounded-2xl bg-white/[0.03] border border-white/[0.07] overflow-hidden">
+          <div className="px-6 pt-6 pb-5">
+            <div className="flex items-start gap-3 justify-between mb-4">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-2.5 py-1 rounded-full bg-white/[0.06] border border-white/[0.08] text-[10px] font-semibold uppercase tracking-[0.15em] text-white/50">
+                  {market.config.category}
+                </span>
+                <MarketStatusBadge status={market.status} />
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
-              <Info label="Category" value={market.config.category} />
-              <Info
-                label="Expiry"
-                value={expiry.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
-              />
-              <Info label="Collateral" value={market.config.collateral.slice(0, 10) + "…"} />
-              <Info label="Bond amount" value={formatUsdc(BigInt(market.config.bondAmount)) + " USDC"} />
-              <Info label="Dispute window" value={`${market.config.disputeWindow / 3600}h`} />
-              <Info label="Creator" value={market.config.creator.slice(0, 8) + "…"} />
+            <h1 className="font-heading text-xl md:text-2xl font-normal leading-snug text-white/90 mb-5">
+              {market.config.question}
+            </h1>
+
+            {market.finalOutcome && (
+              <div className={cn(
+                "mb-5 px-4 py-3 rounded-xl border text-sm font-semibold",
+                market.finalOutcome === "Yes"
+                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                  : market.finalOutcome === "No"
+                  ? "bg-rose-500/10 border-rose-500/30 text-rose-400"
+                  : "bg-white/[0.05] border-white/[0.10] text-white/60"
+              )}>
+                Final Outcome: {market.finalOutcome}
+              </div>
+            )}
+
+            {/* Meta grid */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {[
+                { label: "Expires", value: expiry.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) },
+                { label: "Bond", value: formatUsdc(BigInt(market.config.bondAmount)) + " USDC" },
+                { label: "Dispute window", value: `${market.config.disputeWindow / 3600}h` },
+                { label: "Collateral", value: market.config.collateral.slice(0, 8) + "…" },
+                { label: "Creator", value: market.config.creator.slice(0, 8) + "…" },
+              ].map(({ label, value }) => (
+                <div key={label} className="px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
+                  <p className="text-[10px] uppercase tracking-[0.12em] text-white/30 mb-1">{label}</p>
+                  <p className="text-xs font-medium text-white/70 font-mono">{value}</p>
+                </div>
+              ))}
             </div>
 
             {market.config.rulesUri && (
@@ -76,61 +105,61 @@ async function MarketDetailContent({ marketId }: { marketId: string }) {
                 href={market.config.rulesUri}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs text-primary underline"
+                className="inline-flex items-center gap-1.5 mt-4 text-xs text-orange-400/80 hover:text-orange-300 transition-colors duration-200"
               >
-                View Rules
+                View Rules ↗
               </a>
             )}
+          </div>
+        </div>
 
-            {market.finalOutcome && (
-              <Alert className={
-                market.finalOutcome === "Yes"
-                  ? "border-green-500/30 text-green-700 dark:text-green-400 after:bg-green-500"
-                  : market.finalOutcome === "No"
-                  ? "border-red-500/30 text-red-700 dark:text-red-400 after:bg-red-500"
-                  : ""
-              }>
-                <AlertDescription className="font-semibold">
-                  Final Outcome: {market.finalOutcome}
-                </AlertDescription>
-              </Alert>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* AMM Pool */}
+        {/* Pool card */}
         {market.poolId && (
-          <Card size="sm">
-            <CardHeader className="pb-0">
-              <CardTitle className="text-sm font-semibold normal-case tracking-normal">Pool</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex gap-6 text-xs">
-                <div>
-                  <p className="text-muted-foreground">YES reserve</p>
-                  <p className="font-medium text-green-600 dark:text-green-400">
-                    {formatUsdc(BigInt(market.yesReserve))} USDC
+          <div className="rounded-2xl bg-white/[0.03] border border-white/[0.07] overflow-hidden">
+            <div className="px-6 pt-5 pb-4 border-b border-white/[0.05]">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/30">AMM Pool</p>
+            </div>
+            <div className="px-6 py-5 space-y-5">
+              {/* Probability bar */}
+              <div className="space-y-2">
+                <div className="h-2 rounded-full overflow-hidden flex">
+                  <div
+                    className="bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-1000 ease-[cubic-bezier(0.32,0.72,0,1)]"
+                    style={{ width: `${yesPercent}%` }}
+                  />
+                  <div className="flex-1 bg-gradient-to-r from-rose-400 to-rose-600" />
+                </div>
+                <div className="flex justify-between text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    <span className="text-emerald-400 font-semibold">YES</span>
+                    <span className="text-white/40 font-mono">{yesPercent.toFixed(1)}¢</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-white/40 font-mono">{noPercent.toFixed(1)}¢</span>
+                    <span className="text-rose-400 font-semibold">NO</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Reserve amounts */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="px-4 py-3 rounded-xl bg-emerald-500/[0.06] border border-emerald-500/[0.12]">
+                  <p className="text-[10px] uppercase tracking-[0.12em] text-emerald-600/60 dark:text-emerald-400/50 mb-1">YES Reserve</p>
+                  <p className="text-sm font-semibold font-mono text-emerald-400">
+                    {hasReserves ? formatUsdc(BigInt(market.yesReserve)) : "—"} <span className="text-xs font-normal text-emerald-400/50">USDC</span>
                   </p>
                 </div>
-                <div>
-                  <p className="text-muted-foreground">NO reserve</p>
-                  <p className="font-medium text-red-600 dark:text-red-400">
-                    {formatUsdc(BigInt(market.noReserve))} USDC
+                <div className="px-4 py-3 rounded-xl bg-rose-500/[0.06] border border-rose-500/[0.12]">
+                  <p className="text-[10px] uppercase tracking-[0.12em] text-rose-400/50 mb-1">NO Reserve</p>
+                  <p className="text-sm font-semibold font-mono text-rose-400">
+                    {hasReserves ? formatUsdc(BigInt(market.noReserve)) : "—"} <span className="text-xs font-normal text-rose-400/50">USDC</span>
                   </p>
                 </div>
               </div>
-              {isTradeable && (
-                <div className="flex gap-4 text-xs">
-                  <span className="text-green-600 dark:text-green-400">
-                    YES {(yesBps / 100).toFixed(1)}¢
-                  </span>
-                  <span className="text-red-600 dark:text-red-400">
-                    NO {((10000 - yesBps) / 100).toFixed(1)}¢
-                  </span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         )}
 
         {/* Resolution */}
@@ -138,35 +167,36 @@ async function MarketDetailContent({ marketId }: { marketId: string }) {
           market.status === "ResolutionRequested" ||
           market.status === "Proposed" ||
           market.status === "Disputed") && (
-          <Card size="sm">
-            <CardHeader className="pb-0">
-              <CardTitle className="text-sm font-semibold normal-case tracking-normal">Resolution</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
+          <div className="rounded-2xl bg-white/[0.03] border border-white/[0.07] overflow-hidden">
+            <div className="px-6 pt-5 pb-4 border-b border-white/[0.05]">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/30">Resolution</p>
+            </div>
+            <div className="px-6 py-5">
               <ResolutionPanel market={market} request={resolution?.request ?? null} />
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         )}
       </div>
 
-      {/* Right: Trade + Liquidity */}
+      {/* ── Right: Trading ── */}
       <div className="space-y-4">
         {isTradeable && market.poolId ? (
           <>
+            <UserPositionPanel marketId={market.marketId} poolId={market.poolId} />
             <TradeForm
               marketId={market.marketId}
               poolId={market.poolId}
               marketQuestion={market.config.question}
             />
-            <ChildTradeForm poolId={market.poolId} />
+            <ChildTradeForm poolId={market.poolId} currentMarketId={market.marketId} />
             <LiquidityForm poolId={market.poolId} />
           </>
         ) : (
-          <Card size="sm">
-            <CardContent className="text-sm text-muted-foreground text-center">
-              Trading not available — market is {market.status}.
-            </CardContent>
-          </Card>
+          <div className="rounded-2xl bg-white/[0.03] border border-white/[0.07] px-5 py-6 text-center">
+            <p className="text-sm text-white/40">
+              Trading not available — market is <span className="text-white/60 font-medium">{market.status}</span>.
+            </p>
+          </div>
         )}
       </div>
     </div>
@@ -175,19 +205,9 @@ async function MarketDetailContent({ marketId }: { marketId: string }) {
 
 export default async function MarketDetailPage({ params }: PageProps) {
   const { marketId } = await params;
-
   return (
     <Suspense fallback={<PageLoader />}>
       <MarketDetailContent marketId={marketId} />
     </Suspense>
-  );
-}
-
-function Info({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="text-muted-foreground">{label}</p>
-      <p className="font-medium">{value}</p>
-    </div>
   );
 }

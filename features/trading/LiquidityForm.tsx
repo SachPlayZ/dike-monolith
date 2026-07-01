@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
+import { cn } from "@/lib/utils";
 import { useWallet } from "@/lib/contexts/wallet";
 import {
   buildAmmAddLiquidity,
@@ -10,10 +11,6 @@ import {
 import { submitAndPoll, parseDikeError } from "@/lib/stellar/transaction";
 import { parseUsdc, formatUsdc } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import type { TxState } from "@/lib/types";
 
 type Mode = "add" | "remove";
@@ -24,21 +21,19 @@ interface LiquidityFormProps {
 
 export function LiquidityForm({ poolId }: LiquidityFormProps) {
   const { address, isConnected, connect, sign } = useWallet();
+  const [expanded, setExpanded] = useState(false);
   const [mode, setMode] = useState<Mode>("add");
   const [amountInput, setAmountInput] = useState("");
   const [lpBalance, setLpBalance] = useState<string | null>(null);
   const [txState, setTxState] = useState<TxState>({ status: "idle", hash: null, error: null });
   const [isPending, startTransition] = useTransition();
 
-  async function loadLpBalance() {
-    if (!address) return;
-    try {
-      const bal = await ammGetLpBalance(address, address, poolId);
-      setLpBalance(bal);
-    } catch {
-      setLpBalance(null);
-    }
-  }
+  useEffect(() => {
+    if (!address || !expanded) return;
+    ammGetLpBalance(address, address, poolId)
+      .then((bal) => setLpBalance(bal))
+      .catch(() => setLpBalance(null));
+  }, [address, expanded, poolId]);
 
   async function handleSubmit() {
     if (!address || !amountInput) return;
@@ -46,21 +41,21 @@ export function LiquidityForm({ poolId }: LiquidityFormProps) {
       try {
         const rawAmount = parseUsdc(amountInput).toString();
         setTxState({ status: "building", hash: null, error: null });
-
         const xdr =
           mode === "add"
             ? await buildAmmAddLiquidity(address, poolId, rawAmount)
             : await buildAmmRemoveLiquidity(address, poolId, rawAmount);
-
         setTxState({ status: "awaiting-signature", hash: null, error: null });
         const signedXdr = await sign(xdr);
-
         setTxState({ status: "submitting", hash: null, error: null });
         const result = await submitAndPoll(signedXdr);
-
         setTxState({ status: "success", hash: result.hash, error: null });
         setAmountInput("");
-        await loadLpBalance();
+        if (address) {
+          ammGetLpBalance(address, address, poolId)
+            .then((bal) => setLpBalance(bal))
+            .catch(() => {});
+        }
       } catch (e) {
         setTxState({ status: "failed", hash: null, error: parseDikeError(e) });
       }
@@ -69,82 +64,124 @@ export function LiquidityForm({ poolId }: LiquidityFormProps) {
 
   if (!isConnected) {
     return (
-      <Card size="sm">
-        <CardContent className="text-center space-y-3">
-          <p className="text-sm text-muted-foreground">Connect your wallet to provide liquidity</p>
-          <Button size="sm" onClick={connect}>Connect Wallet</Button>
-        </CardContent>
-      </Card>
+      <div className="rounded-2xl bg-white/[0.03] border border-white/[0.07] px-5 py-4 text-center space-y-3">
+        <p className="text-xs text-white/40">Connect wallet to provide liquidity</p>
+        <button
+          onClick={connect}
+          className="px-4 py-2 rounded-full bg-orange-500/15 border border-orange-500/25 text-orange-300 text-xs font-bold uppercase tracking-widest hover:bg-orange-500/25 transition-all duration-300"
+        >
+          Connect Wallet
+        </button>
+      </div>
     );
   }
 
   return (
-    <Card size="sm">
-      <CardContent className="space-y-4">
-      <h3 className="font-heading text-lg font-normal">Liquidity</h3>
+    <div className="rounded-2xl bg-white/[0.03] border border-white/[0.07] overflow-hidden">
+      {/* Collapsible header */}
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full px-5 py-4 flex items-center justify-between border-b border-white/[0.05] hover:bg-white/[0.02] transition-colors duration-200"
+      >
+        <div className="text-left">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/30">Liquidity</p>
+          {lpBalance !== null && (
+            <p className="text-xs text-white/40 mt-0.5 font-mono">
+              {formatUsdc(BigInt(lpBalance))} LP
+            </p>
+          )}
+        </div>
+        <span className={cn(
+          "text-white/30 text-sm transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
+          expanded && "rotate-180"
+        )}>
+          ↓
+        </span>
+      </button>
 
-      <div className="flex border border-border overflow-hidden">
-        {(["add", "remove"] as Mode[]).map((m) => (
-          <Button
-            key={m}
-            size="xs"
-            variant={mode === m ? "default" : "ghost"}
-            className="flex-1 capitalize"
-            onClick={() => { setMode(m); setAmountInput(""); }}
-          >
-            {m}
-          </Button>
-        ))}
-      </div>
+      {expanded && (
+        <div className="p-5 space-y-4 animate-in fade-in-0 slide-in-from-top-2 duration-200">
+          {/* Add / Remove tab */}
+          <div className="grid grid-cols-2 rounded-xl bg-white/[0.05] p-1 gap-0.5">
+            {(["add", "remove"] as Mode[]).map((m) => (
+              <button
+                key={m}
+                onClick={() => { setMode(m); setAmountInput(""); }}
+                className={cn(
+                  "py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
+                  mode === m
+                    ? "bg-white/[0.10] text-white"
+                    : "text-white/30 hover:text-white/60"
+                )}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
 
-      {lpBalance !== null && (
-        <p className="text-xs text-muted-foreground">
-          LP balance: {formatUsdc(BigInt(lpBalance))}
-          <Button
-            variant="link"
-            size="xs"
-            className="ml-2"
-            onClick={() => setAmountInput(formatUsdc(BigInt(lpBalance)))}
+          {/* LP balance chip (if removing) */}
+          {mode === "remove" && lpBalance !== null && (
+            <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.07]">
+              <span className="text-xs text-white/40">LP balance</span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold font-mono text-white/70">
+                  {formatUsdc(BigInt(lpBalance))}
+                </span>
+                <button
+                  onClick={() => setAmountInput(formatUsdc(BigInt(lpBalance)))}
+                  className="px-2 py-0.5 rounded-md bg-white/[0.08] text-[10px] font-bold uppercase tracking-widest text-white/50 hover:text-white/80 hover:bg-white/[0.12] transition-all duration-200"
+                >
+                  Max
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Amount input */}
+          <div className={cn(
+            "rounded-xl border px-4 py-3.5 transition-all duration-200",
+            "bg-white/[0.04] border-white/[0.08] focus-within:border-white/[0.16] focus-within:bg-white/[0.06]"
+          )}>
+            <p className="text-[10px] uppercase tracking-[0.12em] text-white/30 mb-2">
+              {mode === "add" ? "USDC Amount" : "LP Shares"}
+            </p>
+            <div className="flex items-baseline gap-2">
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0"
+                value={amountInput}
+                onChange={(e) => setAmountInput(e.target.value)}
+                className="flex-1 bg-transparent text-2xl font-semibold text-white placeholder-white/15 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none w-full min-w-0"
+              />
+              <span className="text-sm text-white/30 shrink-0">
+                {mode === "add" ? "USDC" : "LP"}
+              </span>
+            </div>
+          </div>
+
+          {/* CTA */}
+          <button
+            onClick={handleSubmit}
+            disabled={isPending || !amountInput}
+            className={cn(
+              "w-full py-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.98]",
+              amountInput && !isPending
+                ? "bg-white/[0.08] border border-white/[0.14] text-white/70 hover:bg-white/[0.12] hover:text-white"
+                : "bg-white/[0.04] border border-white/[0.07] text-white/25 cursor-not-allowed"
+            )}
           >
-            Max
-          </Button>
-        </p>
+            {isPending
+              ? "Processing…"
+              : mode === "add"
+              ? "Add Liquidity"
+              : "Remove Liquidity"}
+          </button>
+
+          <TxStateDisplay state={txState} />
+        </div>
       )}
-
-      <div className="space-y-1">
-        <Label className="text-muted-foreground font-medium normal-case tracking-normal">
-          {mode === "add" ? "USDC Amount" : "LP Shares"}
-        </Label>
-        <Input
-          type="number"
-          min="0"
-          step="0.01"
-          placeholder="0.00"
-          value={amountInput}
-          onChange={(e) => setAmountInput(e.target.value)}
-        />
-      </div>
-
-      <div className="flex gap-2">
-        <Button variant="outline" size="xs" onClick={loadLpBalance}>
-          Refresh Balance
-        </Button>
-        <Button
-          size="sm"
-          className="flex-1"
-          onClick={handleSubmit}
-          disabled={isPending || !amountInput}
-        >
-          {isPending
-            ? "Processing…"
-            : mode === "add"
-            ? "Add Liquidity"
-            : "Remove Liquidity"}
-        </Button>
-      </div>
-
-      <TxStateDisplay state={txState} />
-      </CardContent>
-    </Card>
+    </div>
   );
 }

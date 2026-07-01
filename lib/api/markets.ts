@@ -19,7 +19,11 @@ export async function fetchMarket(id: string): Promise<MarketData> {
   >(`/markets/${id}`);
 
   if ("market" in res && res.market) {
-    return normalizeMarketData(res.market as Record<string, unknown>);
+    const market = res.market as Record<string, unknown>;
+    const pool =
+      Array.isArray(res.liquidity) && res.liquidity.length > 0 ? res.liquidity[0] : {};
+    // Pool data holds live reserves; spread last so pool wins over stale market fields
+    return normalizeMarketData({ ...market, ...pool });
   }
 
   return normalizeMarketData(res);
