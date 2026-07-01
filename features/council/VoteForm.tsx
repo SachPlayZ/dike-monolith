@@ -10,6 +10,7 @@ import {
   buildClaimReward,
 } from "@/lib/contracts/clients";
 import { submitAndPoll, parseDikeError } from "@/lib/stellar/transaction";
+import { fromScVal, formatUsdc } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -43,6 +44,7 @@ export function VoteForm({ councilCase, onSuccess }: VoteFormProps) {
   const [revealSalt, setRevealSalt] = useState("");
   const [now, setNow] = useState(0);
   const [txState, setTxState] = useState<TxState>({ status: "idle", hash: null, error: null });
+  const [rewardPayout, setRewardPayout] = useState<{ correct: boolean; payout: string } | null>(null);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -111,6 +113,28 @@ export function VoteForm({ councilCase, onSuccess }: VoteFormProps) {
     toast("Salt saved to browser", {
       description: `Keep it safe — needed to reveal. Salt: ${salt}`,
       duration: 15000,
+    });
+  }
+
+  async function handleClaimReward() {
+    if (!address) return;
+    startTransition(async () => {
+      try {
+        setTxState({ status: "building", hash: null, error: null });
+        const xdr = await buildClaimReward(address, councilCase.caseId);
+        setTxState({ status: "awaiting-signature", hash: null, error: null });
+        const signedXdr = await sign(xdr);
+        setTxState({ status: "submitting", hash: null, error: null });
+        const result = await submitAndPoll(signedXdr);
+        setTxState({ status: "success", hash: result.hash, error: null });
+        if (result.returnValue) {
+          const [correct, payout] = fromScVal(result.returnValue) as [boolean, bigint];
+          setRewardPayout({ correct, payout: String(payout) });
+        }
+        onSuccess?.();
+      } catch (e) {
+        setTxState({ status: "failed", hash: null, error: parseDikeError(e) });
+      }
     });
   }
 
@@ -230,11 +254,20 @@ export function VoteForm({ councilCase, onSuccess }: VoteFormProps) {
             <Button
               className="w-full"
               size="sm"
-              onClick={() => exec(() => buildClaimReward(address!, councilCase.caseId))}
+              onClick={handleClaimReward}
               disabled={isPending}
             >
               {isPending ? "Processing…" : "Claim Reward"}
             </Button>
+            {rewardPayout && (
+              <Alert variant={rewardPayout.correct ? "default" : "warning"}>
+                <AlertDescription>
+                  {rewardPayout.correct
+                    ? `Correct vote — claimed ${formatUsdc(BigInt(rewardPayout.payout))} reward.`
+                    : "Vote did not match the final outcome — no reward."}
+                </AlertDescription>
+              </Alert>
+            )}
           </CardContent>
         </Card>
       )}

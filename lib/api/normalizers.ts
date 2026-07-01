@@ -191,6 +191,7 @@ export function normalizeTimelockAction(row: RawRecord): TimelockAction {
     data: [target, payloadHash, expiresAt ? `expires:${expiresAt}` : null]
       .filter((value): value is string => Boolean(value))
       .join(" | "),
+    payload: row.payload_json ?? null,
     eta,
     queued: !executed && !cancelled && eta > 0,
     executed,
@@ -217,8 +218,6 @@ export function normalizeAdminState(response: {
       lpFeeShareBps: toNumberValue(feeConfig.lp_fee_share_bps),
       treasuryFeeShareBps: toNumberValue(feeConfig.treasury_fee_share_bps),
       codFeeShareBps: toNumberValue(feeConfig.cod_fee_share_bps),
-      proposalReward: toStringValue(feeConfig.proposal_reward, "0"),
-      disputeReward: toStringValue(feeConfig.dispute_reward, "0"),
       councilReward: toStringValue(feeConfig.council_reward, "0"),
       creationFee: toStringValue(feeConfig.creation_fee, "0"),
     },

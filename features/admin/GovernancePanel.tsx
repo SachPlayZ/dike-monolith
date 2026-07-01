@@ -1,5 +1,12 @@
+"use client";
+
+import { useEffect, useState, useTransition } from "react";
 import type { AdminState, TimelockAction } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { useWallet } from "@/lib/contexts/wallet";
+import { buildTimelockExecute } from "@/lib/contracts/clients";
+import { submitAndPoll, parseDikeError } from "@/lib/stellar/transaction";
 
 interface GovernancePanelProps {
   state: AdminState;
@@ -33,6 +40,8 @@ export function GovernancePanel({ state, timelockActions }: GovernancePanelProps
             label="COD share"
             value={state.feeConfig ? `${state.feeConfig.codFeeShareBps / 100}%` : "—"}
           />
+          <Kv label="Council reward" value={state.feeConfig?.councilReward ?? "—"} />
+          <Kv label="Creation fee" value={state.feeConfig?.creationFee ?? "—"} />
         </Grid>
       </Section>
 
@@ -91,7 +100,7 @@ export function GovernancePanel({ state, timelockActions }: GovernancePanelProps
             <h4 className="text-xs font-semibold text-muted-foreground mb-2">Queued</h4>
             <ul className="space-y-2">
               {queued.map((a) => (
-                <TimelockRow key={a.actionId} action={a} />
+                <TimelockRow key={a.actionId} action={a} executable />
               ))}
             </ul>
           </div>
@@ -124,7 +133,37 @@ export function GovernancePanel({ state, timelockActions }: GovernancePanelProps
   );
 }
 
-function TimelockRow({ action }: { action: TimelockAction }) {
+function TimelockRow({ action, executable }: { action: TimelockAction; executable?: boolean }) {
+  const { address, isConnected, connect, sign } = useWallet();
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const [now, setNow] = useState<number | null>(null);
+
+  useEffect(() => {
+    const update = () => setNow(Math.floor(Date.now() / 1000));
+    update();
+    const intervalId = window.setInterval(update, 30_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  const isReady = executable && now !== null && now >= action.eta;
+
+  function handleExecute() {
+    if (!address) return;
+    startTransition(async () => {
+      try {
+        setError(null);
+        const xdr = await buildTimelockExecute(address, action.actionId);
+        const signedXdr = await sign(xdr);
+        await submitAndPoll(signedXdr);
+        setDone(true);
+      } catch (e) {
+        setError(parseDikeError(e));
+      }
+    });
+  }
+
   return (
     <li>
       <Card size="sm">
@@ -140,6 +179,32 @@ function TimelockRow({ action }: { action: TimelockAction }) {
           </p>
           {action.data && (
             <p className="font-mono text-muted-foreground break-all">{action.data}</p>
+          )}
+          {action.payload != null && (
+            <pre className="font-mono text-muted-foreground break-all whitespace-pre-wrap">
+              {JSON.stringify(action.payload)}
+            </pre>
+          )}
+          {executable && (
+            <div className="pt-1">
+              {!isConnected ? (
+                <Button size="xs" variant="outline" onClick={connect}>
+                  Connect to execute
+                </Button>
+              ) : done ? (
+                <p className="text-emerald-500">Executed.</p>
+              ) : (
+                <Button
+                  size="xs"
+                  variant={isReady ? "default" : "outline"}
+                  disabled={!isReady || isPending}
+                  onClick={handleExecute}
+                >
+                  {isPending ? "Executing…" : isReady ? "Execute" : "Not ready yet"}
+                </Button>
+              )}
+              {error && <p className="text-destructive mt-1">{error}</p>}
+            </div>
           )}
         </CardContent>
       </Card>

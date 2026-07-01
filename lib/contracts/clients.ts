@@ -30,8 +30,6 @@ export const DEFAULT_FEE_CONFIG: FeeConfig = {
   lpFeeShareBps: 7000,
   treasuryFeeShareBps: 2000,
   codFeeShareBps: 1000,
-  proposalReward: "0",
-  disputeReward: "0",
   councilReward: "0",
   creationFee: "0",
 };
@@ -72,9 +70,7 @@ function feeConfigScVal(fee: FeeConfig): StellarSdk.xdr.ScVal {
     ["cod_fee_share_bps", toU32(fee.codFeeShareBps)],
     ["council_reward", toI128(BigInt(fee.councilReward))],
     ["creation_fee", toI128(BigInt(fee.creationFee))],
-    ["dispute_reward", toI128(BigInt(fee.disputeReward))],
     ["lp_fee_share_bps", toU32(fee.lpFeeShareBps)],
-    ["proposal_reward", toI128(BigInt(fee.proposalReward))],
     ["trading_fee_bps", toU32(fee.tradingFeeBps)],
     ["treasury_fee_share_bps", toU32(fee.treasuryFeeShareBps)],
   ]);
@@ -244,6 +240,32 @@ export async function buildAmmRemoveLiquidity(
     id(poolId),
     amt(shares),
   ]);
+}
+
+// Contract: claim_lp_fees(lp: Address, pool_id: u64) -> i128
+export async function buildAmmClaimLpFees(
+  lp: string,
+  poolId: string
+): Promise<string> {
+  return buildAndSimulate(lp, CONTRACT_IDS.amm(), "claim_lp_fees", [
+    toAddress(lp),
+    id(poolId),
+  ]);
+}
+
+// Contract: claimable_lp_fees(pool_id: u64, owner: Address) -> i128
+export async function ammGetClaimableLpFees(
+  source: string,
+  lp: string,
+  poolId: string
+): Promise<string> {
+  const val = await simulateRead(
+    source,
+    CONTRACT_IDS.amm(),
+    "claimable_lp_fees",
+    [id(poolId), toAddress(lp)]
+  );
+  return String(fromI128(val));
 }
 
 export async function ammGetPool(
@@ -661,6 +683,37 @@ export async function councilGetCase(
     [id(caseId)]
   );
   return fromScVal(val) as CouncilCase;
+}
+
+// ─── DikeTimelock ────────────────────────────────────────────────────────────
+
+// Contract: execute(action_id: u64) -> TimelockAction
+export async function buildTimelockExecute(
+  caller: string,
+  actionId: string
+): Promise<string> {
+  return buildAndSimulate(
+    caller,
+    CONTRACT_IDS.dikeTimelock(),
+    "execute",
+    [id(actionId)]
+  );
+}
+
+// ─── FeeManager ──────────────────────────────────────────────────────────────
+
+// Contract: config() -> FeeConfig
+export async function feeManagerGetConfig(source: string): Promise<FeeConfig> {
+  const val = await simulateRead(source, CONTRACT_IDS.feeManager(), "config", []);
+  const native = fromScVal(val) as Record<string, unknown>;
+  return {
+    tradingFeeBps: Number(native.trading_fee_bps ?? 0),
+    lpFeeShareBps: Number(native.lp_fee_share_bps ?? 0),
+    treasuryFeeShareBps: Number(native.treasury_fee_share_bps ?? 0),
+    codFeeShareBps: Number(native.cod_fee_share_bps ?? 0),
+    councilReward: String(native.council_reward ?? "0"),
+    creationFee: String(native.creation_fee ?? "0"),
+  };
 }
 
 // ─── MarketFactory ───────────────────────────────────────────────────────────

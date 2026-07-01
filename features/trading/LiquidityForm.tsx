@@ -6,7 +6,9 @@ import { useWallet } from "@/lib/contexts/wallet";
 import {
   buildAmmAddLiquidity,
   buildAmmRemoveLiquidity,
+  buildAmmClaimLpFees,
   ammGetLpBalance,
+  ammGetClaimableLpFees,
 } from "@/lib/contracts/clients";
 import { submitAndPoll, parseDikeError } from "@/lib/stellar/transaction";
 import { parseUsdc, formatUsdc } from "@/lib/stellar/scval";
@@ -25,15 +27,44 @@ export function LiquidityForm({ poolId }: LiquidityFormProps) {
   const [mode, setMode] = useState<Mode>("add");
   const [amountInput, setAmountInput] = useState("");
   const [lpBalance, setLpBalance] = useState<string | null>(null);
+  const [claimableFees, setClaimableFees] = useState<string | null>(null);
   const [txState, setTxState] = useState<TxState>({ status: "idle", hash: null, error: null });
+  const [isClaiming, startClaimTransition] = useTransition();
   const [isPending, startTransition] = useTransition();
 
-  useEffect(() => {
-    if (!address || !expanded) return;
+  function refreshLpState() {
+    if (!address) return;
     ammGetLpBalance(address, address, poolId)
       .then((bal) => setLpBalance(bal))
       .catch(() => setLpBalance(null));
+    ammGetClaimableLpFees(address, address, poolId)
+      .then((fees) => setClaimableFees(fees))
+      .catch(() => setClaimableFees(null));
+  }
+
+  useEffect(() => {
+    if (!address || !expanded) return;
+    refreshLpState();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address, expanded, poolId]);
+
+  async function handleClaimFees() {
+    if (!address) return;
+    startClaimTransition(async () => {
+      try {
+        setTxState({ status: "building", hash: null, error: null });
+        const xdr = await buildAmmClaimLpFees(address, poolId);
+        setTxState({ status: "awaiting-signature", hash: null, error: null });
+        const signedXdr = await sign(xdr);
+        setTxState({ status: "submitting", hash: null, error: null });
+        const result = await submitAndPoll(signedXdr);
+        setTxState({ status: "success", hash: result.hash, error: null });
+        refreshLpState();
+      } catch (e) {
+        setTxState({ status: "failed", hash: null, error: parseDikeError(e) });
+      }
+    });
+  }
 
   async function handleSubmit() {
     if (!address || !amountInput) return;
@@ -51,11 +82,7 @@ export function LiquidityForm({ poolId }: LiquidityFormProps) {
         const result = await submitAndPoll(signedXdr);
         setTxState({ status: "success", hash: result.hash, error: null });
         setAmountInput("");
-        if (address) {
-          ammGetLpBalance(address, address, poolId)
-            .then((bal) => setLpBalance(bal))
-            .catch(() => {});
-        }
+        refreshLpState();
       } catch (e) {
         setTxState({ status: "failed", hash: null, error: parseDikeError(e) });
       }
@@ -134,6 +161,25 @@ export function LiquidityForm({ poolId }: LiquidityFormProps) {
                   Max
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* Claimable LP fees */}
+          {claimableFees !== null && BigInt(claimableFees) > 0n && (
+            <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-orange-500/[0.06] border border-orange-500/[0.15]">
+              <div>
+                <span className="text-xs text-white/40">Claimable fees</span>
+                <p className="text-sm font-semibold font-mono text-orange-300">
+                  {formatUsdc(BigInt(claimableFees))}
+                </p>
+              </div>
+              <button
+                onClick={handleClaimFees}
+                disabled={isClaiming}
+                className="px-3 py-1.5 rounded-lg bg-orange-500/15 border border-orange-500/25 text-orange-300 text-[10px] font-bold uppercase tracking-widest hover:bg-orange-500/25 transition-all duration-200 disabled:opacity-50"
+              >
+                {isClaiming ? "Claiming…" : "Claim"}
+              </button>
             </div>
           )}
 

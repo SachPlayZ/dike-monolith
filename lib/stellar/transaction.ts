@@ -3,14 +3,15 @@ import { getRpc } from "./rpc";
 import { networkConfig } from "./config";
 import type { DikeErrorCode } from "@/lib/types";
 
+// Mirrors dike_types::DikeError (dike-contracts/crates/dike_types/src/lib.rs).
 const DIKE_ERROR_MAP: Record<number, DikeErrorCode> = {
-  1: "SlippageExceeded",
-  2: "DeadlineExpired",
-  3: "InvalidStatus",
-  4: "UnsupportedCollateral",
-  5: "EncumberedPosition",
-  6: "InsufficientBalance",
-  7: "Unauthorized",
+  3: "Unauthorized",
+  6: "InvalidStatus",
+  15: "InsufficientBalance",
+  17: "SlippageExceeded",
+  18: "DeadlineExpired",
+  30: "UnsupportedCollateral",
+  35: "EncumberedPosition",
 };
 
 export function parseDikeError(err: unknown): string {

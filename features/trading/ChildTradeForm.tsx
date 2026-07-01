@@ -117,7 +117,12 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
         setQuote(null);
         setAvailableCredit(null);
       } catch (e) {
-        setTxState({ status: "failed", hash: null, error: parseDikeError(e) });
+        const code = parseDikeError(e);
+        const message =
+          code === "InvalidStatus"
+            ? "Parent market is no longer live (resolved, cancelled, or paused) — child credit can't be opened against it."
+            : code;
+        setTxState({ status: "failed", hash: null, error: message });
       }
     });
   }

@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 import { useWallet } from "@/lib/contexts/wallet";
-import { buildCreateMarket, type CreateMarketParams } from "@/lib/contracts/clients";
+import { buildCreateMarket, feeManagerGetConfig, type CreateMarketParams } from "@/lib/contracts/clients";
 import { submitAndPoll, parseDikeError } from "@/lib/stellar/transaction";
-import { parseUsdc } from "@/lib/stellar/scval";
+import { parseUsdc, formatUsdc } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
 import { EmptyState } from "@/components/data-state/EmptyState";
 import { Button } from "@/components/ui/button";
@@ -58,6 +58,14 @@ export default function CreateMarketPage() {
     useWallet();
   const [txState, setTxState] = useState<TxState>({ status: "idle", hash: null, error: null });
   const [isPending, startTransition] = useTransition();
+  const [creationFee, setCreationFee] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!address) return;
+    feeManagerGetConfig(address)
+      .then((cfg) => setCreationFee(cfg.creationFee))
+      .catch(() => setCreationFee(null));
+  }, [address]);
 
   const [form, setForm] = useState({
     question: "",
@@ -250,6 +258,13 @@ export default function CreateMarketPage() {
           Question hash and rules hash are auto-generated from your inputs.
           <br />
           Opening price: <strong>50 / 50</strong> (fixed — contract enforces this)
+          {creationFee !== null && BigInt(creationFee) > 0n && (
+            <>
+              <br />
+              Creation fee: <strong>{formatUsdc(BigInt(creationFee))} USDC</strong> (charged to
+              treasury in your chosen collateral on submit)
+            </>
+          )}
         </div>
 
         <Button

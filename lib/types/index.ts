@@ -43,8 +43,6 @@ export interface FeeConfig {
   lpFeeShareBps: number;
   treasuryFeeShareBps: number;
   codFeeShareBps: number;
-  proposalReward: string;
-  disputeReward: string;
   councilReward: string;
   creationFee: string;
 }
@@ -132,6 +130,7 @@ export interface TimelockAction {
   actionId: string;
   kind: TimelockActionKind;
   data: string;
+  payload: unknown;
   eta: number;
   queued: boolean;
   executed: boolean;
