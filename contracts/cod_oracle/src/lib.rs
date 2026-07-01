@@ -32,6 +32,12 @@ pub struct RoleSet {
     pub module: Address,
 }
 
+#[contractevent(topics = ["admin"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct AdminSet {
+    pub admin: Address,
+}
+
 #[contractevent(topics = ["pause"], data_format = "single-value")]
 #[derive(Clone)]
 pub struct Paused {
@@ -152,6 +158,13 @@ pub trait Council {
         config: OpenCaseConfig,
     ) -> Result<u64, DikeError>;
     fn case(env: Env, case_id: u64) -> Result<CouncilCase, DikeError>;
+    fn case_for_request(env: Env, request_id: u64) -> Result<u64, DikeError>;
+    fn record_case_reward(env: Env, case_id: u64, amount: i128) -> Result<(), DikeError>;
+}
+
+#[contractclient(name = "FeeManagerClient")]
+pub trait FeeManager {
+    fn losing_bond_split(env: Env, losing_bond: i128) -> Result<(i128, i128, i128), DikeError>;
 }
 
 fn bump(env: &Env) {
@@ -260,6 +273,13 @@ impl CODOracle {
         env.storage().instance().set(&DataKey::NextRequestId, &1u64);
         env.storage().instance().set(&DataKey::Paused, &false);
         bump(&env);
+    }
+
+    pub fn set_admin(env: Env, admin: Address) -> Result<(), DikeError> {
+        require_admin(&env)?;
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        AdminSet { admin }.publish(&env);
+        Ok(())
     }
 
     pub fn set_role(env: Env, role: Symbol, module: Address) -> Result<(), DikeError> {
@@ -382,7 +402,6 @@ impl CODOracle {
         outcome: Outcome,
         evidence_uri: String,
     ) -> Result<(), DikeError> {
-        ensure_not_paused(&env)?;
         proposer.require_auth();
         if evidence_uri.is_empty() {
             return Err(DikeError::EvidenceRequired);
@@ -427,7 +446,6 @@ impl CODOracle {
         counter_outcome: Outcome,
         evidence_uri: String,
     ) -> Result<(), DikeError> {
-        ensure_not_paused(&env)?;
         disputer.require_auth();
         if evidence_uri.is_empty() {
             return Err(DikeError::EvidenceRequired);
@@ -475,7 +493,6 @@ impl CODOracle {
     }
 
     pub fn finalize_undisputed(env: Env, request_id: u64) -> Result<Outcome, DikeError> {
-        ensure_not_paused(&env)?;
         let mut request = read_request(&env, request_id)?;
         if request.status != OracleStatus::Proposed {
             return Err(DikeError::InvalidStatus);
@@ -512,11 +529,11 @@ impl CODOracle {
     }
 
     pub fn escalate_to_council(env: Env, request_id: u64) -> Result<(), DikeError> {
-        ensure_not_paused(&env)?;
         let mut request = read_request(&env, request_id)?;
         if request.status != OracleStatus::Disputed {
             return Err(DikeError::InvalidStatus);
         }
+        let market = load_market(&env, request.market_id)?;
         let council = read_role(&env, symbol_short!("council"))?;
         CouncilClient::new(&env, &council).open_case(
             &request.id,
@@ -532,6 +549,7 @@ impl CODOracle {
                 dispute_bond: request.bond_amount,
                 commit_duration: request.dispute_window,
                 reveal_duration: request.dispute_window,
+                token: market.collateral,
             },
         );
         let registry = read_role(&env, symbol_short!("registry"))?;
@@ -566,14 +584,41 @@ impl CODOracle {
                 &request.bond_amount,
                 &false,
             );
+            let fee_manager = read_role(&env, symbol_short!("fees"))?;
+            let treasury = read_role(&env, symbol_short!("treas"))?;
+            let council = read_role(&env, symbol_short!("council"))?;
+            let (winner_amt, council_amt, treasury_amt) =
+                FeeManagerClient::new(&env, &fee_manager).losing_bond_split(&request.bond_amount);
             vault_client.slash_bond(
                 &market.collateral,
                 &request.disputer,
                 &request_id,
-                &request.bond_amount,
+                &winner_amt,
                 &true,
                 &request.proposer,
             );
+            if council_amt > 0 {
+                vault_client.slash_bond(
+                    &market.collateral,
+                    &request.disputer,
+                    &request_id,
+                    &council_amt,
+                    &true,
+                    &council,
+                );
+                let case_id = CouncilClient::new(&env, &council).case_for_request(&request_id);
+                CouncilClient::new(&env, &council).record_case_reward(&case_id, &council_amt);
+            }
+            if treasury_amt > 0 {
+                vault_client.slash_bond(
+                    &market.collateral,
+                    &request.disputer,
+                    &request_id,
+                    &treasury_amt,
+                    &true,
+                    &treasury,
+                );
+            }
         } else if outcome == request.disputed_outcome {
             vault_client.release_bond(
                 &market.collateral,
@@ -582,14 +627,41 @@ impl CODOracle {
                 &request.bond_amount,
                 &true,
             );
+            let fee_manager = read_role(&env, symbol_short!("fees"))?;
+            let treasury = read_role(&env, symbol_short!("treas"))?;
+            let council = read_role(&env, symbol_short!("council"))?;
+            let (winner_amt, council_amt, treasury_amt) =
+                FeeManagerClient::new(&env, &fee_manager).losing_bond_split(&request.bond_amount);
             vault_client.slash_bond(
                 &market.collateral,
                 &request.proposer,
                 &request_id,
-                &request.bond_amount,
+                &winner_amt,
                 &false,
                 &request.disputer,
             );
+            if council_amt > 0 {
+                vault_client.slash_bond(
+                    &market.collateral,
+                    &request.proposer,
+                    &request_id,
+                    &council_amt,
+                    &false,
+                    &council,
+                );
+                let case_id = CouncilClient::new(&env, &council).case_for_request(&request_id);
+                CouncilClient::new(&env, &council).record_case_reward(&case_id, &council_amt);
+            }
+            if treasury_amt > 0 {
+                vault_client.slash_bond(
+                    &market.collateral,
+                    &request.proposer,
+                    &request_id,
+                    &treasury_amt,
+                    &false,
+                    &treasury,
+                );
+            }
         } else {
             vault_client.release_bond(
                 &market.collateral,

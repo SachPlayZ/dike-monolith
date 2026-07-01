@@ -27,6 +27,12 @@ pub struct RoleSet {
     pub module: Address,
 }
 
+#[contractevent(topics = ["admin"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct AdminSet {
+    pub admin: Address,
+}
+
 #[contractevent(topics = ["collat"], data_format = "single-value")]
 #[derive(Clone)]
 pub struct CollateralSupportSet {
@@ -179,11 +185,7 @@ fn validate_fee_config(config: &FeeConfig) -> Result<(), DikeError> {
     if share_total != 10_000 || config.trading_fee_bps > 1_000 {
         return Err(DikeError::InvalidInput);
     }
-    if config.proposal_reward < 0
-        || config.dispute_reward < 0
-        || config.council_reward < 0
-        || config.creation_fee < 0
-    {
+    if config.council_reward < 0 || config.creation_fee < 0 {
         return Err(DikeError::InvalidAmount);
     }
     Ok(())
@@ -214,6 +216,14 @@ impl DikeMarketRegistry {
         env.storage().instance().set(&DataKey::NextMarketId, &1u64);
         env.storage().instance().set(&DataKey::Paused, &false);
         bump(&env);
+    }
+
+    pub fn set_admin(env: Env, admin: Address) -> Result<(), DikeError> {
+        require_admin(&env)?;
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        AdminSet { admin }.publish(&env);
+        bump(&env);
+        Ok(())
     }
 
     pub fn set_role(env: Env, role: Symbol, module: Address) -> Result<(), DikeError> {

@@ -446,6 +446,90 @@ fn registry_blocks_trading_when_market_is_not_live() {
 }
 
 #[test]
+fn skewed_pool_add_liquidity_prices_at_current_ratio_and_fees_are_claimable() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(1);
+    let admin = Address::generate(&env);
+    let factory = Address::generate(&env);
+    let lp = Address::generate(&env);
+    let lp2 = Address::generate(&env);
+    let trader = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token = env
+        .register_stellar_asset_contract_v2(token_admin.clone())
+        .address();
+    let stellar = StellarAssetClient::new(&env, &token);
+    stellar.mint(&lp, &20_000);
+    stellar.mint(&lp2, &20_000);
+    stellar.mint(&trader, &20_000);
+
+    let vault_id = env.register(CollateralVault, (&admin, &admin));
+    let vault = CollateralVaultClient::new(&env, &vault_id);
+    let tokens_id = env.register(DikeConditionalTokens, (&admin,));
+    let tokens = DikeConditionalTokensClient::new(&env, &tokens_id);
+    let live_registry = env.register(LiveRegistry, (&token,));
+    let resolved_registry = env.register(ResolvedRegistry, (&token,));
+    let id = env.register(DikeAMM, (&admin,));
+    let client = DikeAMMClient::new(&env, &id);
+    client.set_role(&symbol_short!("factory"), &factory);
+    vault.set_role(&symbol_short!("amm"), &id);
+    vault.set_role(&symbol_short!("tokens"), &tokens_id);
+    vault.set_role(&symbol_short!("registry"), &live_registry);
+    tokens.set_role(&symbol_short!("amm"), &id);
+    tokens.set_role(&symbol_short!("vault"), &vault_id);
+    client.set_modules(&vault_id, &tokens_id, &token, &live_registry);
+
+    let pool_id = client.create_pool(&1, &FeeConfig::default());
+    client.seed_liquidity(&lp, &pool_id, &10_000);
+
+    // Skew the pool hard by buying a large amount of YES.
+    client.buy_yes(&trader, &pool_id, &5_000, &1, &100);
+    let skewed = client.pool(&pool_id);
+    assert!(skewed.yes_reserve < skewed.no_reserve);
+    assert!(skewed.accumulated_lp_fees > 0);
+
+    // Fair pricing: shares must be the min of both single-side ratios, not
+    // just total_shares * amount / yes_reserve (which would over-mint here
+    // since yes_reserve is now the smaller side).
+    let naive_shares = skewed.total_lp_shares * 1_000 / skewed.yes_reserve;
+    let fair_shares = skewed.total_lp_shares * 1_000 / skewed.no_reserve;
+    assert!(fair_shares < naive_shares);
+    let minted = client.add_liquidity(&lp2, &pool_id, &1_000);
+    assert_eq!(minted, fair_shares);
+
+    // lp2 joined after the first buy, so they must not be able to claim any
+    // of the fees that were already accrued before they deposited.
+    assert_eq!(client.claim_lp_fees(&lp2, &pool_id), 0);
+    let lp_first_claim = client.claim_lp_fees(&lp, &pool_id);
+    assert!(lp_first_claim > 0);
+    assert_eq!(vault.accounting(&1).lp_fees, skewed.accumulated_lp_fees - lp_first_claim);
+
+    // New trading activity after lp2 joined must be shared proportionally
+    // between both LPs.
+    client.buy_no(&trader, &pool_id, &2_000, &1, &100);
+    let lp_second_claim = client.claim_lp_fees(&lp, &pool_id);
+    let lp2_claim = client.claim_lp_fees(&lp2, &pool_id);
+    assert!(lp_second_claim > 0);
+    assert!(lp2_claim > 0);
+
+    // Resolution no longer strands LP shares: remove_liquidity must work on
+    // a resolved market and auto-claim any pending fees in the same call.
+    vault.set_role(&symbol_short!("registry"), &resolved_registry);
+    client.set_modules(&vault_id, &tokens_id, &token, &resolved_registry);
+    let lp_balance_before = client.lp_balance(&pool_id, &lp);
+    let (yes_out, no_out) = client.remove_liquidity(&lp, &pool_id, &lp_balance_before);
+    assert!(yes_out > 0 && no_out > 0);
+    assert_eq!(client.lp_balance(&pool_id, &lp), 0);
+
+    let before = TokenClient::new(&env, &token).balance(&lp);
+    let payout = vault.redeem_resolved(&token, &lp, &1, &Outcome::Yes, &yes_out);
+    assert_eq!(payout, yes_out);
+    assert_eq!(TokenClient::new(&env, &token).balance(&lp), before + yes_out);
+    assert_eq!(tokens.balance(&lp, &1, &Outcome::No), no_out);
+}
+
+#[test]
 fn cancelled_market_allows_lp_position_recovery_but_not_trading() {
     let env = Env::default();
     env.mock_all_auths();

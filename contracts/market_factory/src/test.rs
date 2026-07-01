@@ -170,6 +170,7 @@ fn creates_curated_market() {
     let tokens = DikeConditionalTokensClient::new(&env, &tokens_id);
     let amm_id = env.register(DikeAMM, (&admin,));
     let amm = DikeAMMClient::new(&env, &amm_id);
+    let fee_manager_id = env.register(FeeManager, (&admin, &gov, &500i128, &100u32));
     let id = env.register(DikeMarketFactory, (&admin, &gov, &100i128, &60u64));
     let client = DikeMarketFactoryClient::new(&env, &id);
     registry.set_role(&symbol_short!("factory"), &id);
@@ -186,7 +187,7 @@ fn creates_curated_market() {
         &tokens_id,
         &vault_id,
         &amm_id,
-        &Address::generate(&env),
+        &fee_manager_id,
     );
     client.set_creator(&creator, &true);
     client.set_collateral(&collateral, &true);

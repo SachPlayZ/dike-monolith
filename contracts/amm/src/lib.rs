@@ -2,8 +2,8 @@
 #![allow(clippy::too_many_arguments)]
 
 use dike_math::{
-    average_price_bps, bps, checked_add, checked_sub, proportional, quote_buy_complete_set,
-    quote_sell, split_fee,
+    average_price_bps, bps, checked_add, checked_div, checked_mul, checked_sub, proportional,
+    quote_buy_complete_set, quote_sell, split_fee,
 };
 use dike_types::{DikeError, FeeConfig, MarketData, MarketStatus, Outcome, PoolData, TradeQuote};
 use soroban_sdk::{
@@ -26,9 +26,12 @@ pub enum DataKey {
     Pool(u64),
     PoolFee(u64),
     LpBalance(u64, Address),
+    LpFeeCheckpoint(u64, Address),
     NextPoolId,
     Paused,
 }
+
+const FEE_SCALE: i128 = 1_000_000_000_000_000_000;
 
 #[contractclient(name = "DikeVaultClient")]
 pub trait DikeVault {
@@ -76,6 +79,14 @@ pub trait DikeVault {
         protocol_fee: i128,
         cod_fee: i128,
     ) -> Result<(), DikeError>;
+
+    fn claim_lp_fees(
+        env: Env,
+        token: Address,
+        market_id: u64,
+        lp: Address,
+        amount: i128,
+    ) -> Result<(), DikeError>;
 }
 
 #[contractclient(name = "DikeRegistryClient")]
@@ -116,6 +127,12 @@ pub struct RoleSet {
     #[topic]
     pub role: Symbol,
     pub module: Address,
+}
+
+#[contractevent(topics = ["admin"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct AdminSet {
+    pub admin: Address,
 }
 
 #[contractevent(topics = ["pause"], data_format = "single-value")]
@@ -163,6 +180,16 @@ pub struct LiquidityRemoved {
     pub shares: i128,
     pub yes_out: i128,
     pub no_out: i128,
+}
+
+#[contractevent(topics = ["lpfee"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct LpFeesClaimed {
+    #[topic]
+    pub pool_id: u64,
+    #[topic]
+    pub lp: Address,
+    pub amount: i128,
 }
 
 #[contractevent(topics = ["buy"], data_format = "vec")]
@@ -280,11 +307,7 @@ fn validate_fee_config(config: &FeeConfig) -> Result<(), DikeError> {
     if share_total != 10_000 || config.trading_fee_bps > 1_000 {
         return Err(DikeError::InvalidInput);
     }
-    if config.proposal_reward < 0
-        || config.dispute_reward < 0
-        || config.council_reward < 0
-        || config.creation_fee < 0
-    {
+    if config.council_reward < 0 || config.creation_fee < 0 {
         return Err(DikeError::InvalidAmount);
     }
     Ok(())
@@ -331,6 +354,7 @@ fn require_market_liquidity_removable(env: &Env, market_id: u64) -> Result<(), D
                 return Err(DikeError::InvalidStatus);
             }
         }
+        MarketStatus::Resolved => {}
         _ => return Err(DikeError::InvalidStatus),
     }
     Ok(())
@@ -360,6 +384,10 @@ fn accrue_fees(
     pool.accumulated_lp_fees = checked_add(pool.accumulated_lp_fees, lp_fee)?;
     pool.accumulated_protocol_fees = checked_add(pool.accumulated_protocol_fees, treasury_fee)?;
     pool.accumulated_cod_fees = checked_add(pool.accumulated_cod_fees, cod_fee)?;
+    if pool.total_lp_shares > 0 && lp_fee > 0 {
+        let delta = checked_div(checked_mul(lp_fee, FEE_SCALE)?, pool.total_lp_shares)?;
+        pool.fee_per_share_scaled = checked_add(pool.fee_per_share_scaled, delta)?;
+    }
     Ok((lp_fee, treasury_fee, cod_fee))
 }
 
@@ -384,6 +412,44 @@ fn write_lp(env: &Env, pool_id: u64, owner: Address, amount: i128) {
     env.storage()
         .persistent()
         .extend_ttl(&key, MIN_TTL, EXTEND_TTL);
+}
+
+fn lp_fee_checkpoint_key(pool_id: u64, owner: Address) -> DataKey {
+    DataKey::LpFeeCheckpoint(pool_id, owner)
+}
+
+fn read_lp_fee_checkpoint(env: &Env, pool_id: u64, owner: Address) -> i128 {
+    let key = lp_fee_checkpoint_key(pool_id, owner);
+    if !env.storage().persistent().has(&key) {
+        return 0;
+    }
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, MIN_TTL, EXTEND_TTL);
+    env.storage().persistent().get(&key).unwrap_or(0)
+}
+
+fn write_lp_fee_checkpoint(env: &Env, pool_id: u64, owner: Address, fee_per_share_scaled: i128) {
+    let key = lp_fee_checkpoint_key(pool_id, owner);
+    env.storage().persistent().set(&key, &fee_per_share_scaled);
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, MIN_TTL, EXTEND_TTL);
+}
+
+fn compute_lp_fees_owed(
+    env: &Env,
+    pool_id: u64,
+    lp: Address,
+    pool: &PoolData,
+    lp_shares: i128,
+) -> Result<i128, DikeError> {
+    let checkpoint = read_lp_fee_checkpoint(env, pool_id, lp);
+    let delta = checked_sub(pool.fee_per_share_scaled, checkpoint)?;
+    if delta <= 0 || lp_shares <= 0 {
+        return Ok(0);
+    }
+    checked_div(checked_mul(lp_shares, delta)?, FEE_SCALE)
 }
 
 fn quote_buy_side(
@@ -569,6 +635,14 @@ impl DikeAMM {
         bump(&env);
     }
 
+    pub fn set_admin(env: Env, admin: Address) -> Result<(), DikeError> {
+        require_admin(&env)?;
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        AdminSet { admin }.publish(&env);
+        bump(&env);
+        Ok(())
+    }
+
     pub fn set_role(env: Env, role: Symbol, module: Address) -> Result<(), DikeError> {
         require_admin(&env)?;
         env.storage()
@@ -622,6 +696,7 @@ impl DikeAMM {
             accumulated_protocol_fees: 0,
             accumulated_cod_fees: 0,
             live: false,
+            fee_per_share_scaled: 0,
         };
         write_pool(&env, &pool);
         write_fee(&env, pool_id, &fee_config);
@@ -666,6 +741,7 @@ impl DikeAMM {
         pool.live = true;
         write_pool(&env, &pool);
         write_lp(&env, pool_id, lp.clone(), amount);
+        write_lp_fee_checkpoint(&env, pool_id, lp.clone(), pool.fee_per_share_scaled);
         LiquiditySeeded {
             pool_id,
             lp,
@@ -688,7 +764,7 @@ impl DikeAMM {
         let (vault, tokens, collateral, _) = modules(&env)?;
         let mut pool = read_pool(&env, pool_id)?;
         require_market_tradeable(&env, pool.market_id)?;
-        if !pool.live || pool.total_lp_shares <= 0 || pool.yes_reserve <= 0 {
+        if !pool.live || pool.total_lp_shares <= 0 || pool.yes_reserve <= 0 || pool.no_reserve <= 0 {
             return Err(DikeError::InvalidStatus);
         }
         DikeVaultClient::new(&env, &vault).deposit_for_market(
@@ -702,13 +778,34 @@ impl DikeAMM {
             &pool.market_id,
             &amount,
         );
-        let shares = proportional(pool.total_lp_shares, amount, pool.yes_reserve)?;
+        let yes_shares = proportional(pool.total_lp_shares, amount, pool.yes_reserve)?;
+        let no_shares = proportional(pool.total_lp_shares, amount, pool.no_reserve)?;
+        let shares = yes_shares.min(no_shares);
+        if shares <= 0 {
+            return Err(DikeError::InvalidAmount);
+        }
+        let current = read_lp(&env, pool_id, lp.clone());
+        let pending = compute_lp_fees_owed(&env, pool_id, lp.clone(), &pool, current)?;
         pool.yes_reserve = checked_add(pool.yes_reserve, amount)?;
         pool.no_reserve = checked_add(pool.no_reserve, amount)?;
         pool.total_lp_shares = checked_add(pool.total_lp_shares, shares)?;
         write_pool(&env, &pool);
-        let current = read_lp(&env, pool_id, lp.clone());
         write_lp(&env, pool_id, lp.clone(), checked_add(current, shares)?);
+        write_lp_fee_checkpoint(&env, pool_id, lp.clone(), pool.fee_per_share_scaled);
+        if pending > 0 {
+            DikeVaultClient::new(&env, &vault).claim_lp_fees(
+                &collateral,
+                &pool.market_id,
+                &lp,
+                &pending,
+            );
+            LpFeesClaimed {
+                pool_id,
+                lp: lp.clone(),
+                amount: pending,
+            }
+            .publish(&env);
+        }
         LiquidityAdded {
             pool_id,
             lp,
@@ -729,20 +826,37 @@ impl DikeAMM {
         if shares <= 0 {
             return Err(DikeError::InvalidAmount);
         }
-        let (_, tokens, _, _) = modules(&env)?;
+        let (vault, tokens, collateral, _) = modules(&env)?;
         let mut pool = read_pool(&env, pool_id)?;
         require_market_liquidity_removable(&env, pool.market_id)?;
         let current = read_lp(&env, pool_id, lp.clone());
         if current < shares || pool.total_lp_shares < shares {
             return Err(DikeError::InsufficientBalance);
         }
+        let pending = compute_lp_fees_owed(&env, pool_id, lp.clone(), &pool, current)?;
         let yes_out = proportional(pool.yes_reserve, shares, pool.total_lp_shares)?;
         let no_out = proportional(pool.no_reserve, shares, pool.total_lp_shares)?;
         pool.yes_reserve = checked_sub(pool.yes_reserve, yes_out)?;
         pool.no_reserve = checked_sub(pool.no_reserve, no_out)?;
         pool.total_lp_shares = checked_sub(pool.total_lp_shares, shares)?;
         write_pool(&env, &pool);
-        write_lp(&env, pool_id, lp.clone(), checked_sub(current, shares)?);
+        let remaining = checked_sub(current, shares)?;
+        write_lp(&env, pool_id, lp.clone(), remaining);
+        write_lp_fee_checkpoint(&env, pool_id, lp.clone(), pool.fee_per_share_scaled);
+        if pending > 0 {
+            DikeVaultClient::new(&env, &vault).claim_lp_fees(
+                &collateral,
+                &pool.market_id,
+                &lp,
+                &pending,
+            );
+            LpFeesClaimed {
+                pool_id,
+                lp: lp.clone(),
+                amount: pending,
+            }
+            .publish(&env);
+        }
         let token_client = DikeTokensClient::new(&env, &tokens);
         token_client.transfer_position(
             &env.current_contract_address(),
@@ -767,6 +881,29 @@ impl DikeAMM {
         }
         .publish(&env);
         Ok((yes_out, no_out))
+    }
+
+    pub fn claim_lp_fees(env: Env, lp: Address, pool_id: u64) -> Result<i128, DikeError> {
+        lp.require_auth();
+        let pool = read_pool(&env, pool_id)?;
+        let lp_shares = read_lp(&env, pool_id, lp.clone());
+        if lp_shares <= 0 {
+            return Err(DikeError::InsufficientBalance);
+        }
+        let owed = compute_lp_fees_owed(&env, pool_id, lp.clone(), &pool, lp_shares)?;
+        if owed <= 0 {
+            return Ok(0);
+        }
+        write_lp_fee_checkpoint(&env, pool_id, lp.clone(), pool.fee_per_share_scaled);
+        let (vault, _, collateral, _) = modules(&env)?;
+        DikeVaultClient::new(&env, &vault).claim_lp_fees(&collateral, &pool.market_id, &lp, &owed);
+        LpFeesClaimed {
+            pool_id,
+            lp,
+            amount: owed,
+        }
+        .publish(&env);
+        Ok(owed)
     }
 
     pub fn buy_yes(
@@ -875,6 +1012,16 @@ impl DikeAMM {
 
     pub fn lp_balance(env: Env, pool_id: u64, owner: Address) -> i128 {
         read_lp(&env, pool_id, owner)
+    }
+
+    pub fn lp_fee_checkpoint(env: Env, pool_id: u64, owner: Address) -> i128 {
+        read_lp_fee_checkpoint(&env, pool_id, owner)
+    }
+
+    pub fn claimable_lp_fees(env: Env, pool_id: u64, owner: Address) -> Result<i128, DikeError> {
+        let pool = read_pool(&env, pool_id)?;
+        let shares = read_lp(&env, pool_id, owner.clone());
+        compute_lp_fees_owed(&env, pool_id, owner, &pool, shares)
     }
 }
 

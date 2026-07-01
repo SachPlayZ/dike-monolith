@@ -1,6 +1,6 @@
 #![no_std]
 
-use soroban_sdk::{contracterror, contracttype, Address, BytesN, String};
+use soroban_sdk::{contracterror, contracttype, Address, BytesN, String, Symbol};
 
 pub const BPS_DENOMINATOR: i128 = 10_000;
 pub const DEFAULT_TRADE_FEE_BPS: u32 = 200;
@@ -83,8 +83,6 @@ pub struct FeeConfig {
     pub lp_fee_share_bps: u32,
     pub treasury_fee_share_bps: u32,
     pub cod_fee_share_bps: u32,
-    pub proposal_reward: i128,
-    pub dispute_reward: i128,
     pub council_reward: i128,
     pub creation_fee: i128,
 }
@@ -96,8 +94,6 @@ impl Default for FeeConfig {
             lp_fee_share_bps: DEFAULT_LP_FEE_SHARE_BPS,
             treasury_fee_share_bps: DEFAULT_TREASURY_FEE_SHARE_BPS,
             cod_fee_share_bps: DEFAULT_COD_FEE_SHARE_BPS,
-            proposal_reward: 0,
-            dispute_reward: 0,
             council_reward: 0,
             creation_fee: 0,
         }
@@ -175,6 +171,7 @@ pub struct PoolData {
     pub accumulated_protocol_fees: i128,
     pub accumulated_cod_fees: i128,
     pub live: bool,
+    pub fee_per_share_scaled: i128,
 }
 
 #[contracttype]
@@ -220,6 +217,7 @@ pub struct OpenCaseConfig {
     pub dispute_bond: i128,
     pub commit_duration: u64,
     pub reveal_duration: u64,
+    pub token: Address,
 }
 
 #[contracttype]
@@ -250,10 +248,24 @@ pub struct CouncilCase {
 
 #[contracttype]
 #[derive(Clone)]
+pub enum TimelockPayload {
+    Treasury(Address),
+    Creator(Address, bool),
+    CouncilMember(Address, bool),
+    SupportedCollateral(Address, bool),
+    ModuleAddress(Symbol, Address),
+    Pause(Address),
+    FeeConfig(FeeConfig),
+    Upgrade(Symbol, BytesN<32>),
+}
+
+#[contracttype]
+#[derive(Clone)]
 pub struct TimelockAction {
     pub id: u64,
     pub kind: TimelockActionKind,
     pub target: Address,
+    pub payload: TimelockPayload,
     pub payload_hash: BytesN<32>,
     pub execute_after: u64,
     pub expires_at: u64,

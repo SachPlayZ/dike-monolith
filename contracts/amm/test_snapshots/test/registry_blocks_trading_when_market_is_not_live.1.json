@@ -273,26 +273,10 @@
                     },
                     {
                       "key": {
-                        "symbol": "dispute_reward"
-                      },
-                      "val": {
-                        "i128": "0"
-                      }
-                    },
-                    {
-                      "key": {
                         "symbol": "lp_fee_share_bps"
                       },
                       "val": {
                         "u32": 7000
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "proposal_reward"
-                      },
-                      "val": {
-                        "i128": "0"
                       }
                     },
                     {
@@ -1668,6 +1652,57 @@
             "key": {
               "vec": [
                 {
+                  "symbol": "LpFeeCheckpoint"
+                },
+                {
+                  "u64": "1"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAXI7N",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "LpFeeCheckpoint"
+                    },
+                    {
+                      "u64": "1"
+                    },
+                    {
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "i128": "0"
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          518400
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAXI7N",
+            "key": {
+              "vec": [
+                {
                   "symbol": "Pool"
                 },
                 {
@@ -1717,6 +1752,14 @@
                     {
                       "key": {
                         "symbol": "accumulated_protocol_fees"
+                      },
+                      "val": {
+                        "i128": "0"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "fee_per_share_scaled"
                       },
                       "val": {
                         "i128": "0"
@@ -1842,26 +1885,10 @@
                     },
                     {
                       "key": {
-                        "symbol": "dispute_reward"
-                      },
-                      "val": {
-                        "i128": "0"
-                      }
-                    },
-                    {
-                      "key": {
                         "symbol": "lp_fee_share_bps"
                       },
                       "val": {
                         "u32": 7000
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "proposal_reward"
-                      },
-                      "val": {
-                        "i128": "0"
                       }
                     },
                     {

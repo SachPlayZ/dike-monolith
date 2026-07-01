@@ -20,6 +20,12 @@ pub enum DataKey {
     TreasuryBondShareBps,
 }
 
+#[contractevent(topics = ["admin"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct AdminSet {
+    pub admin: Address,
+}
+
 #[contractevent(topics = ["fee_cfg"])]
 #[derive(Clone)]
 pub struct FeeConfigSet {}
@@ -52,6 +58,16 @@ fn require_governance(env: &Env) -> Result<(), DikeError> {
     Ok(())
 }
 
+fn require_admin(env: &Env) -> Result<(), DikeError> {
+    let admin: Address = env
+        .storage()
+        .instance()
+        .get(&DataKey::Admin)
+        .ok_or(DikeError::NotInitialized)?;
+    admin.require_auth();
+    Ok(())
+}
+
 fn validate_fee_config(config: &FeeConfig) -> Result<(), DikeError> {
     let share_total = config.lp_fee_share_bps as u64
         + config.treasury_fee_share_bps as u64
@@ -62,11 +78,7 @@ fn validate_fee_config(config: &FeeConfig) -> Result<(), DikeError> {
     if config.trading_fee_bps > 1_000 {
         return Err(DikeError::InvalidInput);
     }
-    if config.proposal_reward < 0
-        || config.dispute_reward < 0
-        || config.council_reward < 0
-        || config.creation_fee < 0
-    {
+    if config.council_reward < 0 || config.creation_fee < 0 {
         return Err(DikeError::InvalidAmount);
     }
     Ok(())
@@ -109,6 +121,13 @@ impl FeeManager {
             &DataKey::TreasuryBondShareBps,
             &DEFAULT_TREASURY_BOND_SHARE_BPS,
         );
+    }
+
+    pub fn set_admin(env: Env, admin: Address) -> Result<(), DikeError> {
+        require_admin(&env)?;
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        AdminSet { admin }.publish(&env);
+        Ok(())
     }
 
     pub fn set_config(env: Env, config: FeeConfig) -> Result<(), DikeError> {

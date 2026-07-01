@@ -20,6 +20,12 @@ pub enum DataKey {
     UpgradeHash(Symbol),
 }
 
+#[contractevent(topics = ["admin"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct AdminSet {
+    pub admin: Address,
+}
+
 #[contractevent(topics = ["timelock"], data_format = "single-value")]
 #[derive(Clone)]
 pub struct TimelockSet {
@@ -112,11 +118,7 @@ fn validate_fee_config(config: &FeeConfig) -> Result<(), DikeError> {
     if share_total != 10_000 || config.trading_fee_bps > 1_000 {
         return Err(DikeError::InvalidInput);
     }
-    if config.proposal_reward < 0
-        || config.dispute_reward < 0
-        || config.council_reward < 0
-        || config.creation_fee < 0
-    {
+    if config.council_reward < 0 || config.creation_fee < 0 {
         return Err(DikeError::InvalidAmount);
     }
     Ok(())
@@ -134,6 +136,13 @@ impl DikeGovernance {
         env.storage()
             .instance()
             .set(&DataKey::FeeConfig, &FeeConfig::default());
+    }
+
+    pub fn set_admin(env: Env, admin: Address) -> Result<(), DikeError> {
+        require_admin(&env)?;
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        AdminSet { admin }.publish(&env);
+        Ok(())
     }
 
     pub fn set_timelock(env: Env, timelock: Address) -> Result<(), DikeError> {

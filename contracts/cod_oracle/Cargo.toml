@@ -18,3 +18,4 @@ soroban-sdk = { workspace = true, features = ["testutils"] }
 market-registry = { path = "../market_registry" }
 collateral-vault = { path = "../collateral_vault" }
 council-of-dike = { path = "../council_of_dike" }
+fee-manager = { path = "../fee_manager" }

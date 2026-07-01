@@ -8,6 +8,8 @@ TREASURY="${TREASURY:-$SOURCE}"
 PROPOSER="${PROPOSER:-$SOURCE}"
 EXECUTOR="${EXECUTOR:-$SOURCE}"
 GOV_AUTH="${GOV_AUTH:-$SOURCE}"
+EXTRA_CREATOR="${EXTRA_CREATOR:-GAYOEII6EPU3SYBKNYEVJL36R3KVUN4UKHUWB3XTGLCLPTOWVBWZBE4G}"
+EXTRA_COUNCIL_MEMBER="${EXTRA_COUNCIL_MEMBER:-GAYOEII6EPU3SYBKNYEVJL36R3KVUN4UKHUWB3XTGLCLPTOWVBWZBE4G}"
 COLLATERAL_CONTRACT="${COLLATERAL_CONTRACT:-}"
 ASSET_CODE="${ASSET_CODE:-USDC}"
 USDC_ISSUER="${USDC_ISSUER:-}"
@@ -185,6 +187,8 @@ invoke_as "$ADMIN" "$ORACLE" set_role --role gov --module "$GOV_AUTH"
 invoke_as "$ADMIN" "$ORACLE" set_role --role council --module "$COUNCIL"
 invoke_as "$ADMIN" "$ORACLE" set_role --role registry --module "$REGISTRY"
 invoke_as "$ADMIN" "$ORACLE" set_role --role vault --module "$VAULT"
+invoke_as "$ADMIN" "$ORACLE" set_role --role fees --module "$FEE_MANAGER"
+invoke_as "$ADMIN" "$ORACLE" set_role --role treas --module "$TREASURY"
 
 invoke_as "$ADMIN" "$COUNCIL" set_role --role gov --module "$GOV_AUTH"
 invoke_as "$ADMIN" "$COUNCIL" set_role --role oracle --module "$ORACLE"
@@ -192,6 +196,13 @@ invoke_as "$ADMIN" "$COUNCIL" set_role --role oracle --module "$ORACLE"
 invoke_as "$ADMIN" "$FACTORY" set_modules --registry "$REGISTRY" --tokens "$TOKENS" --vault "$VAULT" --amm "$AMM" --fee-manager "$FEE_MANAGER"
 invoke_as "$GOV_AUTH" "$FACTORY" set_creator --creator "$SOURCE" --approved true
 invoke_as "$GOV_AUTH" "$FACTORY" set_collateral --collateral "$COLLATERAL_CONTRACT" --supported true
+
+if [ -n "$EXTRA_CREATOR" ]; then
+  invoke_as "$GOV_AUTH" "$FACTORY" set_creator --creator "$EXTRA_CREATOR" --approved true
+fi
+if [ -n "$EXTRA_COUNCIL_MEMBER" ]; then
+  invoke_as "$GOV_AUTH" "$COUNCIL" set_member --member "$EXTRA_COUNCIL_MEMBER" --approved true
+fi
 
 cat > "$MANIFEST" <<JSON
 {
