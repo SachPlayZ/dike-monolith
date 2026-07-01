@@ -163,4 +163,3 @@ fn cancelled_action_cannot_execute() {
         Err(Ok(DikeError::ActionConsumed))
     ));
 }
-

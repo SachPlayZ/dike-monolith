@@ -503,7 +503,10 @@ fn skewed_pool_add_liquidity_prices_at_current_ratio_and_fees_are_claimable() {
     assert_eq!(client.claim_lp_fees(&lp2, &pool_id), 0);
     let lp_first_claim = client.claim_lp_fees(&lp, &pool_id);
     assert!(lp_first_claim > 0);
-    assert_eq!(vault.accounting(&1).lp_fees, skewed.accumulated_lp_fees - lp_first_claim);
+    assert_eq!(
+        vault.accounting(&1).lp_fees,
+        skewed.accumulated_lp_fees - lp_first_claim
+    );
 
     // New trading activity after lp2 joined must be shared proportionally
     // between both LPs.
@@ -525,7 +528,10 @@ fn skewed_pool_add_liquidity_prices_at_current_ratio_and_fees_are_claimable() {
     let before = TokenClient::new(&env, &token).balance(&lp);
     let payout = vault.redeem_resolved(&token, &lp, &1, &Outcome::Yes, &yes_out);
     assert_eq!(payout, yes_out);
-    assert_eq!(TokenClient::new(&env, &token).balance(&lp), before + yes_out);
+    assert_eq!(
+        TokenClient::new(&env, &token).balance(&lp),
+        before + yes_out
+    );
     assert_eq!(tokens.balance(&lp, &1, &Outcome::No), no_out);
 }
 
