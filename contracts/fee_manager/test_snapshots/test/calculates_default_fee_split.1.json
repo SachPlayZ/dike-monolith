@@ -102,26 +102,10 @@
                             },
                             {
                               "key": {
-                                "symbol": "dispute_reward"
-                              },
-                              "val": {
-                                "i128": "0"
-                              }
-                            },
-                            {
-                              "key": {
                                 "symbol": "lp_fee_share_bps"
                               },
                               "val": {
                                 "u32": 7000
-                              }
-                            },
-                            {
-                              "key": {
-                                "symbol": "proposal_reward"
-                              },
-                              "val": {
-                                "i128": "0"
                               }
                             },
                             {

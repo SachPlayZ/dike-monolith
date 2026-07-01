@@ -38,6 +38,7 @@ fn commit_reveal_and_finalize() {
             dispute_bond: 500,
             commit_duration: 10,
             reveal_duration: 10,
+            token: Address::generate(&env),
         },
     );
     let salt = BytesN::from_array(&env, &[7; 32]);
@@ -50,7 +51,7 @@ fn commit_reveal_and_finalize() {
     client.reveal_vote(&voter, &case_id, &Outcome::No, &salt);
     env.ledger().set_timestamp(25);
     assert_eq!(client.finalize_case(&case_id), Outcome::No);
-    assert!(client.claim_reward(&voter, &case_id));
+    assert!(client.claim_reward(&voter, &case_id).0);
 }
 
 #[test]
@@ -85,6 +86,7 @@ fn pause_blocks_case_mutations_and_zero_windows_are_rejected() {
                 dispute_bond: 500,
                 commit_duration: 0,
                 reveal_duration: 10,
+                token: Address::generate(&env),
             },
         )
         .is_err());
@@ -103,6 +105,7 @@ fn pause_blocks_case_mutations_and_zero_windows_are_rejected() {
             dispute_bond: 500,
             commit_duration: 10,
             reveal_duration: 10,
+            token: Address::generate(&env),
         },
     );
     let salt = BytesN::from_array(&env, &[9; 32]);
@@ -115,5 +118,7 @@ fn pause_blocks_case_mutations_and_zero_windows_are_rejected() {
         .try_reveal_vote(&voter, &case_id, &Outcome::Yes, &salt)
         .is_err());
     env.ledger().set_timestamp(25);
-    assert!(client.try_finalize_case(&case_id).is_err());
+    // Pause blocks new participation (commit/reveal) but not completion of
+    // an already in-flight case, so it can't strand votes/bonds.
+    assert!(client.try_finalize_case(&case_id).is_ok());
 }

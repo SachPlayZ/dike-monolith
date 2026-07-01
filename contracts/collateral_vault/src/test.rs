@@ -14,6 +14,7 @@ use soroban_sdk::{
 #[derive(Clone)]
 pub enum RegKey {
     Collateral,
+    Resolved,
 }
 
 #[contract]
@@ -25,6 +26,11 @@ impl FixedRegistry {
         env.storage()
             .instance()
             .set(&RegKey::Collateral, &collateral);
+        env.storage().instance().set(&RegKey::Resolved, &false);
+    }
+
+    pub fn set_resolved(env: Env, resolved: bool) {
+        env.storage().instance().set(&RegKey::Resolved, &resolved);
     }
 
     pub fn get_final_outcome(_env: Env, _market_id: u64) -> Result<Outcome, DikeError> {
@@ -33,6 +39,11 @@ impl FixedRegistry {
 
     pub fn get_market(env: Env, market_id: u64) -> Result<MarketData, DikeError> {
         let collateral: Address = env.storage().instance().get(&RegKey::Collateral).unwrap();
+        let resolved: bool = env
+            .storage()
+            .instance()
+            .get(&RegKey::Resolved)
+            .unwrap_or(false);
         Ok(MarketData {
             id: market_id,
             question: String::from_str(&env, "q"),
@@ -44,8 +55,12 @@ impl FixedRegistry {
             yes_token_id: market_id * 2,
             no_token_id: market_id * 2 + 1,
             expiry: 1_000,
-            status: MarketStatus::Resolved,
-            has_final_outcome: true,
+            status: if resolved {
+                MarketStatus::Resolved
+            } else {
+                MarketStatus::Live
+            },
+            has_final_outcome: resolved,
             final_outcome: Outcome::Yes,
             pool_id: market_id,
             bond_amount: 1,
@@ -254,6 +269,7 @@ fn child_win_redeem_repays_loan_before_user_profit() {
     client.deposit_for_market(&token, &lp, &2, &100);
     client.open_child_credit_for_trade(&alice, &1, &Outcome::Yes, &2, &Outcome::Yes, &60);
     tokens.mint_complete_set(&alice, &2, &100);
+    FixedRegistryClient::new(&env, &registry_id).set_resolved(&true);
 
     let before = TokenClient::new(&env, &token).balance(&alice);
     let payout = client.redeem_resolved(&token, &alice, &2, &Outcome::Yes, &100);
@@ -293,6 +309,7 @@ fn parent_win_redeem_is_net_of_unpaid_child_debt() {
     client.record_cash_stake(&alice, &1, &Outcome::Yes, &100, &100);
     client.open_child_credit_for_trade(&alice, &1, &Outcome::Yes, &2, &Outcome::Yes, &60);
     tokens.mint_complete_set(&alice, &1, &100);
+    FixedRegistryClient::new(&env, &registry_id).set_resolved(&true);
 
     let before = TokenClient::new(&env, &token).balance(&alice);
     let payout = client.redeem_resolved(&token, &alice, &1, &Outcome::Yes, &100);
@@ -335,6 +352,7 @@ fn child_redeem_after_parent_repayment_does_not_double_charge_debt() {
     client.open_child_credit_for_trade(&alice, &1, &Outcome::Yes, &2, &Outcome::Yes, &60);
     tokens.mint_complete_set(&alice, &1, &100);
     tokens.mint_complete_set(&alice, &2, &100);
+    FixedRegistryClient::new(&env, &registry_id).set_resolved(&true);
 
     let parent_payout = client.redeem_resolved(&token, &alice, &1, &Outcome::Yes, &100);
     assert_eq!(parent_payout, 40);

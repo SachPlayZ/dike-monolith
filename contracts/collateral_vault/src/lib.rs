@@ -61,6 +61,12 @@ pub struct RoleSet {
     pub module: Address,
 }
 
+#[contractevent(topics = ["admin"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct AdminSet {
+    pub admin: Address,
+}
+
 #[contractevent(topics = ["treas"], data_format = "single-value")]
 #[derive(Clone)]
 pub struct TreasurySet {
@@ -420,6 +426,14 @@ impl CollateralVault {
         bump(&env);
     }
 
+    pub fn set_admin(env: Env, admin: Address) -> Result<(), DikeError> {
+        require_admin(&env)?;
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        AdminSet { admin }.publish(&env);
+        bump(&env);
+        Ok(())
+    }
+
     pub fn set_role(env: Env, role: Symbol, module: Address) -> Result<(), DikeError> {
         require_admin(&env)?;
         env.storage()
@@ -565,6 +579,10 @@ impl CollateralVault {
         }
         if parent_market_id == child_market_id {
             return Err(DikeError::InvalidInput);
+        }
+        let parent_market = market_data(&env, parent_market_id)?;
+        if parent_market.status != MarketStatus::Live {
+            return Err(DikeError::InvalidStatus);
         }
         if read_parent(&env, parent_market_id, user.clone()) != 0 {
             return Err(DikeError::ChainDepthExceeded);
@@ -1142,6 +1160,28 @@ impl CollateralVault {
             cod_fee,
         }
         .publish(&env);
+        Ok(())
+    }
+
+    pub fn claim_lp_fees(
+        env: Env,
+        token: Address,
+        market_id: u64,
+        lp: Address,
+        amount: i128,
+    ) -> Result<(), DikeError> {
+        require_role(&env, symbol_short!("amm"))?;
+        if amount <= 0 {
+            return Err(DikeError::InvalidAmount);
+        }
+        require_market_collateral(&env, &token, market_id)?;
+        let mut accounting = read_accounting(&env, market_id);
+        if accounting.lp_fees < amount {
+            return Err(DikeError::InsufficientBalance);
+        }
+        accounting.lp_fees = checked_sub(accounting.lp_fees, amount)?;
+        write_accounting(&env, market_id, &accounting);
+        transfer_token(&env, &token, &env.current_contract_address(), &lp, amount);
         Ok(())
     }
 

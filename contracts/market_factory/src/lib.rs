@@ -2,7 +2,8 @@
 
 use dike_types::{DikeError, FeeConfig, MarketConfig, MarketData, MarketStatus};
 use soroban_sdk::{
-    contract, contractclient, contractevent, contractimpl, contracttype, Address, Env,
+    contract, contractclient, contractevent, contractimpl, contracttype, token::Client as TokenClient,
+    Address, Env,
 };
 
 const MIN_TTL: u32 = 17_280;
@@ -23,13 +24,18 @@ pub enum DataKey {
     MinLiquidity,
     MinExpiryDuration,
     NextMarketId,
-    Market(u64),
     Paused,
 }
 
 #[contractevent(topics = ["modules"])]
 #[derive(Clone)]
 pub struct ModulesSet {}
+
+#[contractevent(topics = ["admin"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct AdminSet {
+    pub admin: Address,
+}
 
 #[contractevent(topics = ["creator"], data_format = "single-value")]
 #[derive(Clone)]
@@ -90,6 +96,16 @@ pub trait DikeAmm {
         -> Result<i128, DikeError>;
 }
 
+#[contractclient(name = "FeeManagerClient")]
+pub trait FeeManagerInterface {
+    fn config(env: Env) -> FeeConfig;
+}
+
+#[contractclient(name = "DikeGovernanceClient")]
+pub trait DikeGovernanceInterface {
+    fn treasury(env: Env) -> Result<Address, DikeError>;
+}
+
 fn bump(env: &Env) {
     env.storage().instance().extend_ttl(MIN_TTL, EXTEND_TTL);
 }
@@ -114,20 +130,6 @@ fn require_governance(env: &Env) -> Result<(), DikeError> {
     Ok(())
 }
 
-fn read_market(env: &Env, market_id: u64) -> Result<MarketData, DikeError> {
-    let key = DataKey::Market(market_id);
-    if !env.storage().persistent().has(&key) {
-        return Err(DikeError::MarketNotFound);
-    }
-    env.storage()
-        .persistent()
-        .extend_ttl(&key, MIN_TTL, EXTEND_TTL);
-    env.storage()
-        .persistent()
-        .get(&key)
-        .ok_or(DikeError::MarketNotFound)
-}
-
 fn read_module(env: &Env, key: DataKey) -> Result<Address, DikeError> {
     env.storage()
         .instance()
@@ -142,11 +144,7 @@ fn validate_fee_config(config: &FeeConfig) -> Result<(), DikeError> {
     if share_total != 10_000 || config.trading_fee_bps > 1_000 {
         return Err(DikeError::InvalidInput);
     }
-    if config.proposal_reward < 0
-        || config.dispute_reward < 0
-        || config.council_reward < 0
-        || config.creation_fee < 0
-    {
+    if config.council_reward < 0 || config.creation_fee < 0 {
         return Err(DikeError::InvalidAmount);
     }
     Ok(())
@@ -235,6 +233,14 @@ impl DikeMarketFactory {
         bump(&env);
     }
 
+    pub fn set_admin(env: Env, admin: Address) -> Result<(), DikeError> {
+        require_admin(&env)?;
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        AdminSet { admin }.publish(&env);
+        bump(&env);
+        Ok(())
+    }
+
     pub fn set_modules(
         env: Env,
         registry: Address,
@@ -304,6 +310,17 @@ impl DikeMarketFactory {
             return Err(DikeError::InvalidStatus);
         }
         validate(&env, &config, initial_liquidity, opening_price_bps)?;
+        let fee_manager = read_module(&env, DataKey::FeeManager)?;
+        let fee_cfg = FeeManagerClient::new(&env, &fee_manager).config();
+        if fee_cfg.creation_fee > 0 {
+            let governance = read_module(&env, DataKey::Governance)?;
+            let treasury = DikeGovernanceClient::new(&env, &governance).treasury();
+            TokenClient::new(&env, &config.collateral).transfer(
+                &config.creator,
+                &treasury,
+                &fee_cfg.creation_fee,
+            );
+        }
         let market_id: u64 = env
             .storage()
             .instance()
@@ -331,11 +348,6 @@ impl DikeMarketFactory {
         registry_client.activate_market(&market_id);
         let mut market = registry_client.get_market(&market_id);
         market.status = MarketStatus::Live;
-        let key = DataKey::Market(market_id);
-        env.storage().persistent().set(&key, &market);
-        env.storage()
-            .persistent()
-            .extend_ttl(&key, MIN_TTL, EXTEND_TTL);
         let next_market_id = market_id.checked_add(1).ok_or(DikeError::ArithmeticError)?;
         env.storage()
             .instance()
@@ -348,10 +360,6 @@ impl DikeMarketFactory {
         }
         .publish(&env);
         Ok(market)
-    }
-
-    pub fn market(env: Env, market_id: u64) -> Result<MarketData, DikeError> {
-        read_market(&env, market_id)
     }
 }
 

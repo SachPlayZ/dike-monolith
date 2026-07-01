@@ -160,8 +160,9 @@ The deployment script:
 
 - Builds optimized Soroban WASM into `target/stellar`.
 - Deploys or reuses contract aliases.
-- Wires module roles across the registry, tokens, vault, AMM, oracle, council, and factory.
+- Wires module roles across the registry, tokens, vault, AMM, oracle, council, and factory (including CODOracle's `fees`/`treas` roles for bond-split payouts).
 - Registers supported collateral and an approved market creator.
+- Optionally registers `EXTRA_CREATOR`/`EXTRA_COUNCIL_MEMBER` addresses as an additional approved creator and council member.
 - Writes a manifest to `deployments/<network>.json`.
 
 ### Current Testnet Deployment
@@ -171,8 +172,10 @@ Manifest: [`deployments/testnet.json`](deployments/testnet.json)
 | Field | Value |
 | --- | --- |
 | Network | Testnet |
-| Source/Admin/Treasury/Governance authority | `alice` |
-| Operator address | [`GD7CNH2G45HDZ44UR6AUZJV65ZRNH5UO3UPJQLCLKTSPYQXTHP75R4CV`](https://stellar.expert/explorer/testnet/account/GD7CNH2G45HDZ44UR6AUZJV65ZRNH5UO3UPJQLCLKTSPYQXTHP75R4CV) |
+| Deploy source (paid deploy/wiring txns) | `alice` |
+| Admin (all modules, rotated post-deploy via `set_admin`) | [`GAYOEII6EPU3SYBKNYEVJL36R3KVUN4UKHUWB3XTGLCLPTOWVBWZBE4G`](https://stellar.expert/explorer/testnet/account/GAYOEII6EPU3SYBKNYEVJL36R3KVUN4UKHUWB3XTGLCLPTOWVBWZBE4G) |
+| Treasury / Governance authority (`gov` role) | `alice` operator address [`GD7CNH2G45HDZ44UR6AUZJV65ZRNH5UO3UPJQLCLKTSPYQXTHP75R4CV`](https://stellar.expert/explorer/testnet/account/GD7CNH2G45HDZ44UR6AUZJV65ZRNH5UO3UPJQLCLKTSPYQXTHP75R4CV) |
+| Approved creator / council member (additional) | [`GAYOEII6EPU3SYBKNYEVJL36R3KVUN4UKHUWB3XTGLCLPTOWVBWZBE4G`](https://stellar.expert/explorer/testnet/account/GAYOEII6EPU3SYBKNYEVJL36R3KVUN4UKHUWB3XTGLCLPTOWVBWZBE4G) |
 | Collateral | USDC Stellar Asset Contract |
 | USDC issuer | [`GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`](https://stellar.expert/explorer/testnet/account/GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5) |
 | USDC SAC | [`CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA`](https://stellar.expert/explorer/testnet/contract/CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA) |
@@ -180,18 +183,21 @@ Manifest: [`deployments/testnet.json`](deployments/testnet.json)
 
 | Module | Contract ID |
 | --- | --- |
-| DikeTimelock | [`CDOYK4XXJZWEVBX3KSWP4NPSKJ2D5QC4NR4X44PO26A562HMO3UDQUJO`](https://stellar.expert/explorer/testnet/contract/CDOYK4XXJZWEVBX3KSWP4NPSKJ2D5QC4NR4X44PO26A562HMO3UDQUJO) |
-| DikeGovernance | [`CB2P52MOXKQ2VSMPEJEVR3YRY3JEIRHXMEEJAHHTEZM5S227XFPR4DEG`](https://stellar.expert/explorer/testnet/contract/CB2P52MOXKQ2VSMPEJEVR3YRY3JEIRHXMEEJAHHTEZM5S227XFPR4DEG) |
-| DikeMarketRegistry | [`CB5CUTSE3LJDLB2QEGPBQXGT3MJFC3OUDCTOWTSSKQPGXRTMRTZIOY2R`](https://stellar.expert/explorer/testnet/contract/CB5CUTSE3LJDLB2QEGPBQXGT3MJFC3OUDCTOWTSSKQPGXRTMRTZIOY2R) |
-| DikeConditionalTokens | [`CDM6YW47FWNP5ZCLIC7QMVWEYKTNDGKDKPMVH6TOO4QWCYI2LI3ZKZ7M`](https://stellar.expert/explorer/testnet/contract/CDM6YW47FWNP5ZCLIC7QMVWEYKTNDGKDKPMVH6TOO4QWCYI2LI3ZKZ7M) |
-| CollateralVault | [`CB7XIJHNUAMPK4GXAYY6ASSXXZ2BAPCSJUWSG66ZN2APB2CRAZTPIWFS`](https://stellar.expert/explorer/testnet/contract/CB7XIJHNUAMPK4GXAYY6ASSXXZ2BAPCSJUWSG66ZN2APB2CRAZTPIWFS) |
-| DikeAMM | [`CACCX2VWZYG5JQHDS6USDNKFLQ6D3SGKBFZTLF5MHCPAL7NSY7B4TEG5`](https://stellar.expert/explorer/testnet/contract/CACCX2VWZYG5JQHDS6USDNKFLQ6D3SGKBFZTLF5MHCPAL7NSY7B4TEG5) |
-| FeeManager | [`CBLM222DHRORDBZGWFZGXN7JPADVST5QJHF65GROOMM5676LCC3PAFN4`](https://stellar.expert/explorer/testnet/contract/CBLM222DHRORDBZGWFZGXN7JPADVST5QJHF65GROOMM5676LCC3PAFN4) |
-| CODOracle | [`CBBSQ2QLK5J3QYDTGBUDVJY5VKFDSQSLQ2W23S5ZMP7DKLK5MWWDH3QH`](https://stellar.expert/explorer/testnet/contract/CBBSQ2QLK5J3QYDTGBUDVJY5VKFDSQSLQ2W23S5ZMP7DKLK5MWWDH3QH) |
-| CouncilOfDike | [`CBFUBMLAAB2VPRX5IDSXHGUZAJPR5WOFSMIXE35JNUOBZTFZEZUT7UXX`](https://stellar.expert/explorer/testnet/contract/CBFUBMLAAB2VPRX5IDSXHGUZAJPR5WOFSMIXE35JNUOBZTFZEZUT7UXX) |
-| DikeMarketFactory | [`CBQMPPKOZORS6K72YJZEOOSKXUDTXMCXF6UX7OKY5UWQ2EXJ665YNILH`](https://stellar.expert/explorer/testnet/contract/CBQMPPKOZORS6K72YJZEOOSKXUDTXMCXF6UX7OKY5UWQ2EXJ665YNILH) |
+| DikeTimelock | [`CBREU6TBZIG5EDDIVTRCSTSQNHJZBV5YP3TQ52VHCFAWF4T42X77UPXU`](https://stellar.expert/explorer/testnet/contract/CBREU6TBZIG5EDDIVTRCSTSQNHJZBV5YP3TQ52VHCFAWF4T42X77UPXU) |
+| DikeGovernance | [`CBJCA5OKB6YT6I2HKHJIZ2LO2VSUWPANK46ADKQJVGOBOW2LJ3O4G6TL`](https://stellar.expert/explorer/testnet/contract/CBJCA5OKB6YT6I2HKHJIZ2LO2VSUWPANK46ADKQJVGOBOW2LJ3O4G6TL) |
+| DikeMarketRegistry | [`CBN4FARFSG3O4I66L3CWNRJC3ZSA6WENKUJYFE3PJYOXBFT6UBZ3JS7W`](https://stellar.expert/explorer/testnet/contract/CBN4FARFSG3O4I66L3CWNRJC3ZSA6WENKUJYFE3PJYOXBFT6UBZ3JS7W) |
+| DikeConditionalTokens | [`CDTOS7AFTKGIAD74FCRCHQ72ZWZCOAT55DRXS3GVGREAKSXM6YU2LHNF`](https://stellar.expert/explorer/testnet/contract/CDTOS7AFTKGIAD74FCRCHQ72ZWZCOAT55DRXS3GVGREAKSXM6YU2LHNF) |
+| CollateralVault | [`CCXTEEWX3SQUSEIVQG4CIWCGIHPGFYFI6GHVNCLJWEBERZYOMLG4EALX`](https://stellar.expert/explorer/testnet/contract/CCXTEEWX3SQUSEIVQG4CIWCGIHPGFYFI6GHVNCLJWEBERZYOMLG4EALX) |
+| DikeAMM | [`CBM3GYO6BFBR7QSELH2H37KIASZMHEJETYIF7XJMKLT3Z2W2VEO3X4YV`](https://stellar.expert/explorer/testnet/contract/CBM3GYO6BFBR7QSELH2H37KIASZMHEJETYIF7XJMKLT3Z2W2VEO3X4YV) |
+| FeeManager | [`CC4BJIAUQCUKBOGY3JYZTZHBXGNCLZXVTMB7MSZLCWKZWAAE34HW2OVH`](https://stellar.expert/explorer/testnet/contract/CC4BJIAUQCUKBOGY3JYZTZHBXGNCLZXVTMB7MSZLCWKZWAAE34HW2OVH) |
+| CODOracle | [`CCNAG7U2Z56I4MTOTK56S6IRTFDSYQXUGH2HPOQ3ZZCMF4NGIOQHDFTW`](https://stellar.expert/explorer/testnet/contract/CCNAG7U2Z56I4MTOTK56S6IRTFDSYQXUGH2HPOQ3ZZCMF4NGIOQHDFTW) |
+| CouncilOfDike | [`CDLVR7IXCXS4PTS5FT4YHXYPSI3WO7LRTTLRY3GDHS72DXGNNPH5UMLX`](https://stellar.expert/explorer/testnet/contract/CDLVR7IXCXS4PTS5FT4YHXYPSI3WO7LRTTLRY3GDHS72DXGNNPH5UMLX) |
+| DikeMarketFactory | [`CBCWGZV7TEVJHRXQDJFDMB7HEAMJ3SSUNIKXLOA5YJG7ITELHPDF644D`](https://stellar.expert/explorer/testnet/contract/CBCWGZV7TEVJHRXQDJFDMB7HEAMJ3SSUNIKXLOA5YJG7ITELHPDF644D) |
 
-Wiring verified on-chain: registry and factory support the USDC SAC above; AMM points to the same USDC SAC plus registry, vault, and tokens; vault, tokens, oracle, and council roles point at the listed contracts.
+Wiring verified on-chain: registry and factory support the USDC SAC above; AMM points to the same USDC SAC plus registry, vault, and tokens; vault, tokens, oracle, and council roles point at the listed contracts; CODOracle additionally holds `fees` (FeeManager) and `treas` (treasury) roles for bond-split payouts.
+
+> [!NOTE]
+> Every module now exposes `set_admin(new_admin)`, gated by the *current* admin's `require_auth` (not the new admin's) — so admin can be rotated to a cold/multisig address post-deploy without that address ever signing during setup.
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full runbook.
 

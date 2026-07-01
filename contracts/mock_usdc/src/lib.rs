@@ -15,6 +15,12 @@ pub enum DataKey {
     TotalSupply,
 }
 
+#[contractevent(topics = ["admin"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct AdminSet {
+    pub admin: Address,
+}
+
 #[contractevent(topics = ["mint"], data_format = "single-value")]
 #[derive(Clone)]
 pub struct Minted {
@@ -102,6 +108,13 @@ impl MockUSDC {
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::TotalSupply, &0i128);
+    }
+
+    pub fn set_admin(env: Env, admin: Address) -> Result<(), DikeError> {
+        require_admin(&env)?;
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        AdminSet { admin }.publish(&env);
+        Ok(())
     }
 
     pub fn decimals(_env: Env) -> u32 {

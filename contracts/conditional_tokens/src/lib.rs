@@ -28,6 +28,12 @@ pub struct RoleSet {
     pub module: Address,
 }
 
+#[contractevent(topics = ["admin"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct AdminSet {
+    pub admin: Address,
+}
+
 #[contractevent(topics = ["pause"], data_format = "single-value")]
 #[derive(Clone)]
 pub struct Paused {
@@ -218,6 +224,14 @@ impl DikeConditionalTokens {
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Paused, &false);
         bump(&env);
+    }
+
+    pub fn set_admin(env: Env, admin: Address) -> Result<(), DikeError> {
+        require_admin(&env)?;
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        AdminSet { admin }.publish(&env);
+        bump(&env);
+        Ok(())
     }
 
     pub fn set_role(env: Env, role: Symbol, module: Address) -> Result<(), DikeError> {

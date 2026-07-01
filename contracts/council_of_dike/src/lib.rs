@@ -1,10 +1,11 @@
 #![no_std]
 #![allow(clippy::too_many_arguments)]
 
+use dike_math::checked_add;
 use dike_types::{CouncilCase, CouncilCaseStatus, DikeError, OpenCaseConfig, Outcome};
 use soroban_sdk::{
-    contract, contractclient, contractevent, contractimpl, contracttype, symbol_short, xdr::ToXdr,
-    Address, BytesN, Env, String, Symbol,
+    contract, contractclient, contractevent, contractimpl, contracttype, symbol_short,
+    token::Client as TokenClient, xdr::ToXdr, Address, BytesN, Env, String, Symbol,
 };
 
 const MIN_TTL: u32 = 17_280;
@@ -22,6 +23,8 @@ pub enum DataKey {
     Commit(u64, Address),
     Reveal(u64, Address),
     Claimed(u64, Address),
+    CaseToken(u64),
+    CaseRewardPool(u64),
     Paused,
 }
 
@@ -31,6 +34,12 @@ pub struct RoleSet {
     #[topic]
     pub role: Symbol,
     pub module: Address,
+}
+
+#[contractevent(topics = ["admin"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct AdminSet {
+    pub admin: Address,
 }
 
 #[contractevent(topics = ["member"], data_format = "single-value")]
@@ -83,7 +92,7 @@ pub struct CaseFinalized {
     pub outcome: Outcome,
 }
 
-#[contractevent(topics = ["reward"], data_format = "single-value")]
+#[contractevent(topics = ["reward"], data_format = "vec")]
 #[derive(Clone)]
 pub struct RewardClaimed {
     #[topic]
@@ -91,6 +100,7 @@ pub struct RewardClaimed {
     #[topic]
     pub voter: Address,
     pub correct: bool,
+    pub payout: i128,
 }
 
 #[contract]
@@ -197,6 +207,13 @@ impl CouncilOfDike {
         bump(&env);
     }
 
+    pub fn set_admin(env: Env, admin: Address) -> Result<(), DikeError> {
+        require_admin(&env)?;
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        AdminSet { admin }.publish(&env);
+        Ok(())
+    }
+
     pub fn set_role(env: Env, role: Symbol, module: Address) -> Result<(), DikeError> {
         require_admin(&env)?;
         env.storage()
@@ -222,6 +239,21 @@ impl CouncilOfDike {
         Ok(())
     }
 
+    pub fn record_case_reward(env: Env, case_id: u64, amount: i128) -> Result<(), DikeError> {
+        require_role(&env, symbol_short!("oracle"))?;
+        if amount <= 0 {
+            return Err(DikeError::InvalidAmount);
+        }
+        let key = DataKey::CaseRewardPool(case_id);
+        let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+        let next = checked_add(current, amount)?;
+        env.storage().persistent().set(&key, &next);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, MIN_TTL, EXTEND_TTL);
+        Ok(())
+    }
+
     pub fn open_case(
         env: Env,
         request_id: u64,
@@ -234,7 +266,6 @@ impl CouncilOfDike {
         disputer_evidence_uri: String,
         config: OpenCaseConfig,
     ) -> Result<u64, DikeError> {
-        ensure_not_paused(&env)?;
         require_role(&env, symbol_short!("oracle"))?;
         if proposer_evidence_uri.is_empty() || disputer_evidence_uri.is_empty() {
             return Err(DikeError::EvidenceRequired);
@@ -298,6 +329,11 @@ impl CouncilOfDike {
             MIN_TTL,
             EXTEND_TTL,
         );
+        let token_key = DataKey::CaseToken(case_id);
+        env.storage().persistent().set(&token_key, &config.token);
+        env.storage()
+            .persistent()
+            .extend_ttl(&token_key, MIN_TTL, EXTEND_TTL);
         let next_case_id = case_id.checked_add(1).ok_or(DikeError::ArithmeticError)?;
         env.storage()
             .instance()
@@ -389,7 +425,6 @@ impl CouncilOfDike {
     }
 
     pub fn finalize_case(env: Env, case_id: u64) -> Result<Outcome, DikeError> {
-        ensure_not_paused(&env)?;
         let mut case_data = read_case(&env, case_id)?;
         if case_data.has_final_outcome {
             return Err(DikeError::AlreadyResolved);
@@ -417,7 +452,6 @@ impl CouncilOfDike {
     }
 
     pub fn finalize_and_report_case(env: Env, case_id: u64) -> Result<Outcome, DikeError> {
-        ensure_not_paused(&env)?;
         let outcome = Self::finalize_case(env.clone(), case_id)?;
         let case_data = read_case(&env, case_id)?;
         let oracle: Address = env
@@ -429,8 +463,7 @@ impl CouncilOfDike {
         Ok(outcome)
     }
 
-    pub fn claim_reward(env: Env, voter: Address, case_id: u64) -> Result<bool, DikeError> {
-        ensure_not_paused(&env)?;
+    pub fn claim_reward(env: Env, voter: Address, case_id: u64) -> Result<(bool, i128), DikeError> {
         voter.require_auth();
         let case_data = read_case(&env, case_id)?;
         if !case_data.has_final_outcome {
@@ -452,17 +485,55 @@ impl CouncilOfDike {
         env.storage()
             .persistent()
             .extend_ttl(&claimed_key, MIN_TTL, EXTEND_TTL);
+
+        let mut payout: i128 = 0;
+        if correct {
+            let reward_pool: i128 = env
+                .storage()
+                .persistent()
+                .get(&DataKey::CaseRewardPool(case_id))
+                .unwrap_or(0);
+            let correct_votes = match final_outcome {
+                Outcome::Yes => case_data.yes_votes,
+                Outcome::No => case_data.no_votes,
+                Outcome::Invalid => case_data.invalid_votes,
+            } as i128;
+            if reward_pool > 0 && correct_votes > 0 {
+                payout = reward_pool / correct_votes;
+                if payout > 0 {
+                    let token: Address = env
+                        .storage()
+                        .persistent()
+                        .get(&DataKey::CaseToken(case_id))
+                        .ok_or(DikeError::NotInitialized)?;
+                    TokenClient::new(&env, &token).transfer(
+                        &env.current_contract_address(),
+                        &voter,
+                        &payout,
+                    );
+                }
+            }
+        }
+
         RewardClaimed {
             case_id,
             voter,
             correct,
+            payout,
         }
         .publish(&env);
-        Ok(correct)
+        Ok((correct, payout))
     }
 
     pub fn case(env: Env, case_id: u64) -> Result<CouncilCase, DikeError> {
         read_case(&env, case_id)
+    }
+
+    pub fn case_reward_pool(env: Env, case_id: u64) -> i128 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::CaseRewardPool(case_id))
+            .unwrap_or(0)
     }
 
     pub fn case_for_request(env: Env, request_id: u64) -> Result<u64, DikeError> {

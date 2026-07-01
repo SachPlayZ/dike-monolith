@@ -4,6 +4,7 @@ use super::*;
 use collateral_vault::{CollateralVault, CollateralVaultClient};
 use council_of_dike::{CouncilOfDike, CouncilOfDikeClient};
 use dike_types::{FeeConfig, MarketConfig, MarketStatus};
+use fee_manager::FeeManager;
 use market_registry::{DikeMarketRegistry, DikeMarketRegistryClient};
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
@@ -214,4 +215,80 @@ fn dispute_escalates_to_council_and_registry_resolution() {
         TokenClient::new(&h.env, &h.token).balance(&h.disputer),
         disputer_start
     );
+}
+
+#[test]
+fn council_win_splits_losing_bond_winner_council_treasury() {
+    let h = setup();
+    let oracle = CODOracleClient::new(&h.env, &h.oracle_id);
+    let vault = CollateralVaultClient::new(&h.env, &h.vault_id);
+    let council = CouncilOfDikeClient::new(&h.env, &h.council_id);
+    let gov = Address::generate(&h.env);
+    let treasury = Address::generate(&h.env);
+    let fee_manager_id = h.env.register(FeeManager, (&Address::generate(&h.env), &gov, &500i128, &100u32));
+    oracle.set_role(&symbol_short!("fees"), &fee_manager_id);
+    oracle.set_role(&symbol_short!("treas"), &treasury);
+
+    let proposer_start = TokenClient::new(&h.env, &h.token).balance(&h.proposer);
+    let disputer_start = TokenClient::new(&h.env, &h.token).balance(&h.disputer);
+    let request_id = oracle.request_resolution(
+        &1,
+        &BytesN::from_array(&h.env, &[1; 32]),
+        &String::from_str(&h.env, "ipfs://rules"),
+        &999,
+        &500,
+        &100,
+    );
+    oracle.propose_outcome(
+        &h.proposer,
+        &request_id,
+        &Outcome::Yes,
+        &String::from_str(&h.env, "ipfs://yes"),
+    );
+    oracle.dispute_outcome(
+        &h.disputer,
+        &request_id,
+        &Outcome::No,
+        &String::from_str(&h.env, "ipfs://no"),
+    );
+    oracle.escalate_to_council(&request_id);
+
+    // Council rules in favor of the proposer's outcome: disputer's bond
+    // (the losing bond) must split 60/30/10 winner/council/treasury
+    // instead of the full amount going to the proposer.
+    oracle.report_council_outcome(&request_id, &Outcome::Yes);
+
+    assert_eq!(vault.accounting(&1).proposal_bonds, 0);
+    assert_eq!(vault.accounting(&1).dispute_bonds, 0);
+    // Proposer gets back their own 500 bond plus the 300 (60%) winner share.
+    assert_eq!(
+        TokenClient::new(&h.env, &h.token).balance(&h.proposer),
+        proposer_start + 300
+    );
+    assert_eq!(
+        TokenClient::new(&h.env, &h.token).balance(&h.disputer),
+        disputer_start - 500
+    );
+    assert_eq!(TokenClient::new(&h.env, &h.token).balance(&treasury), 50);
+    assert_eq!(TokenClient::new(&h.env, &h.token).balance(&h.council_id), 150);
+
+    let case_id = council.case_for_request(&request_id);
+    let member = Address::generate(&h.env);
+    council.set_role(&symbol_short!("gov"), &gov);
+    council.set_member(&member, &true);
+    let salt = BytesN::from_array(&h.env, &[3; 32]);
+    let commitment = council.vote_commitment(&case_id, &member, &Outcome::Yes, &salt);
+    council.commit_vote(&member, &case_id, &commitment);
+    // Case was opened at t=1000 with commit/reveal windows of 100s each
+    // (mirroring the request's dispute_window): commit_end=1100, reveal_end=1200.
+    h.env.ledger().set_timestamp(1_101);
+    council.reveal_vote(&member, &case_id, &Outcome::Yes, &salt);
+    h.env.ledger().set_timestamp(1_201);
+    // finalize_case here just tallies revealed votes into a status; it does
+    // not re-run report_council_outcome since the request is already Finalized.
+    council.finalize_case(&case_id);
+    let (correct, payout) = council.claim_reward(&member, &case_id);
+    assert!(correct);
+    assert_eq!(payout, 150);
+    assert_eq!(TokenClient::new(&h.env, &h.token).balance(&member), 150);
 }
