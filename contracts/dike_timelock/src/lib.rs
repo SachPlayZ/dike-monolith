@@ -19,8 +19,11 @@ pub trait DikeGovernance {
     fn apply_module(env: Env, role: Symbol, module: Address) -> Result<(), DikeError>;
     fn apply_pause_authority(env: Env, authority: Address) -> Result<(), DikeError>;
     fn apply_fee_config(env: Env, config: FeeConfig) -> Result<(), DikeError>;
-    fn record_upgrade_hash(env: Env, module_role: Symbol, wasm_hash: BytesN<32>)
-        -> Result<(), DikeError>;
+    fn record_upgrade_hash(
+        env: Env,
+        module_role: Symbol,
+        wasm_hash: BytesN<32>,
+    ) -> Result<(), DikeError>;
 }
 
 const MIN_TTL: u32 = 17_280;
@@ -182,7 +185,10 @@ impl DikeTimelock {
         let expires_at = execute_after
             .checked_add(grace)
             .ok_or(DikeError::ArithmeticError)?;
-        let payload_hash = env.crypto().sha256(&payload.clone().to_xdr(&env)).to_bytes();
+        let payload_hash = env
+            .crypto()
+            .sha256(&payload.clone().to_xdr(&env))
+            .to_bytes();
         let action = TimelockAction {
             id: action_id,
             kind,

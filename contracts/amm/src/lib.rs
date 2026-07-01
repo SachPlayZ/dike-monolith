@@ -764,7 +764,8 @@ impl DikeAMM {
         let (vault, tokens, collateral, _) = modules(&env)?;
         let mut pool = read_pool(&env, pool_id)?;
         require_market_tradeable(&env, pool.market_id)?;
-        if !pool.live || pool.total_lp_shares <= 0 || pool.yes_reserve <= 0 || pool.no_reserve <= 0 {
+        if !pool.live || pool.total_lp_shares <= 0 || pool.yes_reserve <= 0 || pool.no_reserve <= 0
+        {
             return Err(DikeError::InvalidStatus);
         }
         DikeVaultClient::new(&env, &vault).deposit_for_market(

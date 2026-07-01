@@ -2,8 +2,8 @@
 
 use dike_types::{DikeError, FeeConfig, MarketConfig, MarketData, MarketStatus};
 use soroban_sdk::{
-    contract, contractclient, contractevent, contractimpl, contracttype, token::Client as TokenClient,
-    Address, Env,
+    contract, contractclient, contractevent, contractimpl, contracttype,
+    token::Client as TokenClient, Address, Env,
 };
 
 const MIN_TTL: u32 = 17_280;

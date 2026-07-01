@@ -225,7 +225,10 @@ fn council_win_splits_losing_bond_winner_council_treasury() {
     let council = CouncilOfDikeClient::new(&h.env, &h.council_id);
     let gov = Address::generate(&h.env);
     let treasury = Address::generate(&h.env);
-    let fee_manager_id = h.env.register(FeeManager, (&Address::generate(&h.env), &gov, &500i128, &100u32));
+    let fee_manager_id = h.env.register(
+        FeeManager,
+        (&Address::generate(&h.env), &gov, &500i128, &100u32),
+    );
     oracle.set_role(&symbol_short!("fees"), &fee_manager_id);
     oracle.set_role(&symbol_short!("treas"), &treasury);
 
@@ -270,7 +273,10 @@ fn council_win_splits_losing_bond_winner_council_treasury() {
         disputer_start - 500
     );
     assert_eq!(TokenClient::new(&h.env, &h.token).balance(&treasury), 50);
-    assert_eq!(TokenClient::new(&h.env, &h.token).balance(&h.council_id), 150);
+    assert_eq!(
+        TokenClient::new(&h.env, &h.token).balance(&h.council_id),
+        150
+    );
 
     let case_id = council.case_for_request(&request_id);
     let member = Address::generate(&h.env);
