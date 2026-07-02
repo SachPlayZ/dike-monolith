@@ -9,6 +9,7 @@ import {
   buildAmmBuyChildYes,
   buildAmmBuyChildNo,
   vaultGetChildAvail,
+  vaultGetRootStake,
 } from "@/lib/contracts/clients";
 import { apiGet } from "@/lib/api/client";
 import { normalizeMarketData } from "@/lib/api/normalizers";
@@ -31,6 +32,8 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
   const { address, isConnected, connect, sign } = useWallet();
   const [expanded, setExpanded] = useState(false);
   const [markets, setMarkets] = useState<MarketData[]>([]);
+  const [marketsLoading, setMarketsLoading] = useState(false);
+  const [positionStakes, setPositionStakes] = useState<Record<string, { yes: string; no: string }>>({});
   const [parentMarketId, setParentMarketId] = useState("");
   const [parentOutcome, setParentOutcome] = useState<"Yes" | "No">("Yes");
   const [availableCredit, setAvailableCredit] = useState<string | null>(null);
@@ -44,16 +47,39 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
-    if (!expanded) return;
+    if (!expanded || !address) return;
+    setMarketsLoading(true);
     apiGet<{ items: Record<string, unknown>[] }>("/markets")
-      .then((res) => {
+      .then(async (res) => {
         const live = res.items
           .map((r) => normalizeMarketData(r))
           .filter((m) => m.status === "Live" && m.marketId !== currentMarketId);
-        setMarkets(live);
+
+        const stakes = await Promise.all(
+          live.map((m) =>
+            Promise.all([
+              vaultGetRootStake(address, address, m.marketId, "Yes").catch(() => "0"),
+              vaultGetRootStake(address, address, m.marketId, "No").catch(() => "0"),
+            ])
+          )
+        );
+
+        const stakeMap: Record<string, { yes: string; no: string }> = {};
+        const held: MarketData[] = [];
+        live.forEach((m, i) => {
+          const [yes, no] = stakes[i];
+          if (BigInt(yes) > 0n || BigInt(no) > 0n) {
+            stakeMap[m.marketId] = { yes, no };
+            held.push(m);
+          }
+        });
+
+        setPositionStakes(stakeMap);
+        setMarkets(held);
       })
-      .catch(() => {});
-  }, [expanded, currentMarketId]);
+      .catch(() => {})
+      .finally(() => setMarketsLoading(false));
+  }, [expanded, address, currentMarketId]);
 
   useEffect(() => {
     if (!address || !parentMarketId) {
@@ -194,21 +220,38 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
             <div className="rounded-xl bg-white/[0.04] border border-white/[0.08] overflow-hidden">
               <select
                 value={parentMarketId}
-                onChange={(e) => setParentMarketId(e.target.value)}
+                onChange={(e) => {
+                  const nextId = e.target.value;
+                  setParentMarketId(nextId);
+                  const stake = positionStakes[nextId];
+                  if (stake) {
+                    setParentOutcome(BigInt(stake.yes) > 0n ? "Yes" : "No");
+                  }
+                }}
                 className="w-full bg-transparent px-4 py-3 text-xs text-white/70 outline-none cursor-pointer [&>option]:bg-[#1a1208] [&>option]:text-white"
               >
                 <option value="">Select a parent market…</option>
-                {markets.map((m) => (
-                  <option key={m.marketId} value={m.marketId}>
-                    {m.config.question.length > 55
-                      ? m.config.question.slice(0, 55) + "…"
-                      : m.config.question}
-                  </option>
-                ))}
+                {markets.map((m) => {
+                  const stake = positionStakes[m.marketId];
+                  const worth = stake ? BigInt(stake.yes) + BigInt(stake.no) : 0n;
+                  const label = m.config.question.length > 40
+                    ? m.config.question.slice(0, 40) + "…"
+                    : m.config.question;
+                  return (
+                    <option key={m.marketId} value={m.marketId}>
+                      {label} — {formatUsdc(worth)} USDC position
+                    </option>
+                  );
+                })}
               </select>
             </div>
-            {markets.length === 0 && expanded && (
-              <p className="text-[10px] text-white/25">No other live markets.</p>
+            {marketsLoading && (
+              <p className="text-[10px] text-white/25">Checking your positions…</p>
+            )}
+            {!marketsLoading && markets.length === 0 && expanded && (
+              <p className="text-[10px] text-white/25">
+                You don&apos;t hold a position in any other live market.
+              </p>
             )}
           </div>
 
@@ -218,22 +261,33 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
               <div className="space-y-1.5">
                 <p className="text-[10px] uppercase tracking-[0.12em] text-white/30">Encumber Outcome</p>
                 <div className="grid grid-cols-2 gap-2">
-                  {(["Yes", "No"] as const).map((o) => (
-                    <button
-                      key={o}
-                      onClick={() => setParentOutcome(o)}
-                      className={cn(
-                        "py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all duration-300 border",
-                        parentOutcome === o && o === "Yes"
-                          ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-400"
-                          : parentOutcome === o && o === "No"
-                          ? "bg-rose-500/15 border-rose-500/40 text-rose-400"
-                          : "bg-transparent border-white/[0.06] text-white/30 hover:text-white/60"
-                      )}
-                    >
-                      {o}
-                    </button>
-                  ))}
+                  {(["Yes", "No"] as const).map((o) => {
+                    const stake = positionStakes[parentMarketId];
+                    const stakeAmount = stake ? (o === "Yes" ? stake.yes : stake.no) : "0";
+                    const hasStake = BigInt(stakeAmount) > 0n;
+                    return (
+                      <button
+                        key={o}
+                        onClick={() => setParentOutcome(o)}
+                        disabled={!hasStake}
+                        className={cn(
+                          "py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all duration-300 border disabled:opacity-30 disabled:cursor-not-allowed",
+                          parentOutcome === o && o === "Yes"
+                            ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-400"
+                            : parentOutcome === o && o === "No"
+                            ? "bg-rose-500/15 border-rose-500/40 text-rose-400"
+                            : "bg-transparent border-white/[0.06] text-white/30 hover:text-white/60"
+                        )}
+                      >
+                        {o}
+                        {hasStake && (
+                          <span className="block text-[9px] font-normal normal-case tracking-normal mt-0.5 opacity-70">
+                            {formatUsdc(BigInt(stakeAmount))} USDC
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -243,7 +297,7 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
                   <p className="text-xs text-white/30 animate-pulse">Checking credit…</p>
                 ) : availableCredit !== null ? (
                   <div className="flex justify-between items-center">
-                    <span className="text-xs text-white/40">Available credit</span>
+                    <span className="text-xs text-white/40">Available credit (60% of position)</span>
                     <span className={cn(
                       "text-sm font-semibold font-mono",
                       availableCredit === "0" ? "text-amber-400" : "text-white/80"
@@ -288,7 +342,18 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
             "rounded-xl border px-4 py-3.5 transition-all duration-200",
             "bg-white/[0.04] border-white/[0.08] focus-within:border-white/[0.16] focus-within:bg-white/[0.06]"
           )}>
-            <p className="text-[10px] uppercase tracking-[0.12em] text-white/30 mb-2">Amount (credit units)</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] uppercase tracking-[0.12em] text-white/30">Amount (credit units)</p>
+              {availableCredit !== null && availableCredit !== "0" && (
+                <button
+                  type="button"
+                  onClick={() => setAmountInput(formatUsdc(BigInt(availableCredit)))}
+                  className="text-[10px] font-bold uppercase tracking-widest text-orange-300/80 hover:text-orange-300 transition-colors duration-200"
+                >
+                  Max {formatUsdc(BigInt(availableCredit))}
+                </button>
+              )}
+            </div>
             <div className="flex items-baseline gap-2">
               <input
                 type="number"

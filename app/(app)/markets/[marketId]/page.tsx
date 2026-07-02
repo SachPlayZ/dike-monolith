@@ -180,9 +180,9 @@ async function MarketDetailContent({ marketId }: { marketId: string }) {
 
       {/* ── Right: Trading ── */}
       <div className="space-y-4">
+        <UserPositionPanel marketId={market.marketId} poolId={market.poolId} />
         {isTradeable && market.poolId ? (
           <>
-            <UserPositionPanel marketId={market.marketId} poolId={market.poolId} />
             <TradeForm
               marketId={market.marketId}
               poolId={market.poolId}

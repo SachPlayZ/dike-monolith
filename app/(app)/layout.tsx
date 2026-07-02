@@ -13,7 +13,22 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       </div>
       <AppNav />
       <main className="mx-auto max-w-7xl px-4 py-8">{children}</main>
-      <Toaster theme="dark" position="bottom-right" richColors />
+      <Toaster
+        theme="dark"
+        position="bottom-right"
+        richColors
+        toastOptions={{
+          classNames: {
+            toast: "!flex-wrap !items-start !rounded-xl !p-4 !gap-x-3",
+            content: "!flex-1 !basis-full",
+            icon: "!mt-0.5",
+            actionButton:
+              "!ml-0 !mt-3 !w-full !basis-full !h-9 !justify-center !rounded-lg !border !border-current/25 !bg-current/10 !text-current !font-medium !shadow-none hover:!bg-current/20",
+            cancelButton:
+              "!ml-0 !mt-3 !w-full !basis-full !h-9 !justify-center !rounded-lg",
+          },
+        }}
+      />
     </div>
   );
 }

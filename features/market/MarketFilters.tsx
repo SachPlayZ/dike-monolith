@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import type { MarketStatus } from "@/lib/types";
+import { MARKET_CATEGORIES, type MarketStatus } from "@/lib/types";
 
 const STATUSES: MarketStatus[] = [
   "Live",
@@ -12,8 +12,6 @@ const STATUSES: MarketStatus[] = [
   "Resolved",
   "Cancelled",
 ];
-
-const CATEGORIES = ["Politics", "Sports", "Crypto", "Business", "General"];
 
 export function MarketFilters() {
   const router = useRouter();
@@ -67,7 +65,7 @@ export function MarketFilters() {
         >
           All Categories
         </Button>
-        {CATEGORIES.map((category) => (
+        {MARKET_CATEGORIES.map((category) => (
           <Button
             key={category}
             size="xs"

@@ -12,6 +12,7 @@ import {
   buildAmmBuyNo,
   buildAmmSellYes,
   buildAmmSellNo,
+  ctBalance,
 } from "@/lib/contracts/clients";
 import { submitAndPoll, parseDikeError, feeFromXdr, formatFeeXlm } from "@/lib/stellar/transaction";
 import { parseUsdc, formatUsdc, applySlippage } from "@/lib/stellar/scval";
@@ -40,6 +41,18 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
   const [quoting, setQuoting] = useState(false);
   const [txState, setTxState] = useState<TxState>({ status: "idle", hash: null, error: null });
   const [isPending, startTransition] = useTransition();
+  const [balances, setBalances] = useState<{ yes: string; no: string } | null>(null);
+
+  useEffect(() => {
+    if (!address) {
+      setBalances(null);
+      return;
+    }
+    Promise.all([
+      ctBalance(address, address, marketId, "Yes").catch(() => "0"),
+      ctBalance(address, address, marketId, "No").catch(() => "0"),
+    ]).then(([yes, no]) => setBalances({ yes, no }));
+  }, [address, marketId, txState.status]);
 
   useEffect(() => {
     if (!address || !amountInput || parseFloat(amountInput) <= 0) {
@@ -176,7 +189,19 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
           "rounded-xl border px-4 py-3.5 transition-all duration-200",
           "bg-white/[0.04] border-white/[0.08] focus-within:border-white/[0.16] focus-within:bg-white/[0.06]"
         )}>
-          <p className="text-[10px] uppercase tracking-[0.12em] text-white/30 mb-2">Amount</p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] uppercase tracking-[0.12em] text-white/30">Amount</p>
+            {side === "sell" && balances && (
+              <button
+                type="button"
+                onClick={() => setAmountInput(formatUsdc(BigInt(balances[token])))}
+                disabled={balances[token] === "0"}
+                className="text-[10px] font-bold uppercase tracking-widest text-orange-300/80 hover:text-orange-300 disabled:text-white/15 disabled:cursor-not-allowed transition-colors duration-200"
+              >
+                Max {formatUsdc(BigInt(balances[token]))}
+              </button>
+            )}
+          </div>
           <div className="flex items-baseline gap-2">
             <input
               type="number"
@@ -187,7 +212,7 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
               onChange={(e) => setAmountInput(e.target.value)}
               className="flex-1 bg-transparent text-2xl font-semibold text-white placeholder-white/15 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none w-full min-w-0"
             />
-            <span className="text-sm text-white/30 shrink-0">USDC</span>
+            <span className="text-sm text-white/30 shrink-0">{side === "sell" ? token.toUpperCase() : "USDC"}</span>
           </div>
           {quoting && (
             <p className="text-[10px] text-white/30 mt-1.5 animate-pulse">Fetching quote…</p>

@@ -1,3 +1,6 @@
+export const MARKET_CATEGORIES = ["Politics", "Sports", "Crypto", "Business", "General"] as const;
+export type MarketCategory = (typeof MARKET_CATEGORIES)[number];
+
 export type MarketStatus =
   | "Created"
   | "Live"
