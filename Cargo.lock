@@ -551,8 +551,12 @@ dependencies = [
 name = "dike-timelock"
 version = "0.1.0"
 dependencies = [
+ "council-of-dike",
  "dike-governance",
  "dike-types",
+ "fee-manager",
+ "market-factory",
+ "market-registry",
  "soroban-sdk",
 ]
 

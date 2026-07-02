@@ -9,21 +9,47 @@ use soroban_sdk::{
 #[contractclient(name = "DikeGovernanceClient")]
 pub trait DikeGovernance {
     fn apply_treasury(env: Env, treasury: Address) -> Result<(), DikeError>;
-    fn apply_creator(env: Env, creator: Address, approved: bool) -> Result<(), DikeError>;
-    fn apply_council_member(env: Env, member: Address, approved: bool) -> Result<(), DikeError>;
-    fn apply_supported_collateral(
-        env: Env,
-        collateral: Address,
-        supported: bool,
-    ) -> Result<(), DikeError>;
-    fn apply_module(env: Env, role: Symbol, module: Address) -> Result<(), DikeError>;
     fn apply_pause_authority(env: Env, authority: Address) -> Result<(), DikeError>;
-    fn apply_fee_config(env: Env, config: FeeConfig) -> Result<(), DikeError>;
     fn record_upgrade_hash(
         env: Env,
         module_role: Symbol,
         wasm_hash: BytesN<32>,
     ) -> Result<(), DikeError>;
+    fn apply_timelock(env: Env, timelock: Address) -> Result<(), DikeError>;
+}
+
+#[contractclient(name = "MarketFactoryClient")]
+pub trait MarketFactory {
+    fn set_creator_by_timelock(
+        env: Env,
+        creator: Address,
+        approved: bool,
+    ) -> Result<(), DikeError>;
+}
+
+#[contractclient(name = "CouncilClient")]
+pub trait Council {
+    fn set_member(env: Env, member: Address, approved: bool) -> Result<(), DikeError>;
+}
+
+#[contractclient(name = "RegistryClient")]
+pub trait Registry {
+    fn set_supported_collateral(
+        env: Env,
+        collateral: Address,
+        supported: bool,
+    ) -> Result<(), DikeError>;
+    fn set_role(env: Env, role: Symbol, module: Address) -> Result<(), DikeError>;
+}
+
+#[contractclient(name = "RoleManagedClient")]
+pub trait RoleManaged {
+    fn set_role(env: Env, role: Symbol, module: Address) -> Result<(), DikeError>;
+}
+
+#[contractclient(name = "FeeManagerClient")]
+pub trait FeeManager {
+    fn set_config(env: Env, config: FeeConfig) -> Result<(), DikeError>;
 }
 
 const MIN_TTL: u32 = 17_280;
@@ -113,6 +139,10 @@ fn write_action(env: &Env, action: &TimelockAction) {
         .extend_ttl(&key, MIN_TTL, EXTEND_TTL);
 }
 
+fn bump(env: &Env) {
+    env.storage().instance().extend_ttl(MIN_TTL, EXTEND_TTL);
+}
+
 #[contractimpl]
 impl DikeTimelock {
     pub fn __constructor(
@@ -134,12 +164,14 @@ impl DikeTimelock {
             .instance()
             .set(&DataKey::GracePeriod, &grace_period);
         env.storage().instance().set(&DataKey::NextActionId, &1u64);
+        bump(&env);
     }
 
     pub fn set_admin(env: Env, admin: Address) -> Result<(), DikeError> {
         require_address(&env, DataKey::Admin)?;
         env.storage().instance().set(&DataKey::Admin, &admin);
         AdminSet { admin }.publish(&env);
+        bump(&env);
         Ok(())
     }
 
@@ -148,6 +180,7 @@ impl DikeTimelock {
         env.storage().instance().set(&DataKey::Proposer, &proposer);
         env.storage().instance().set(&DataKey::Executor, &executor);
         RolesSet { proposer, executor }.publish(&env);
+        bump(&env);
         Ok(())
     }
 
@@ -159,6 +192,9 @@ impl DikeTimelock {
         requested_delay: u64,
     ) -> Result<u64, DikeError> {
         require_address(&env, DataKey::Proposer)?;
+        if !payload.matches_kind(&kind) {
+            return Err(DikeError::InvalidInput);
+        }
         let min_delay: u64 = env
             .storage()
             .instance()
@@ -211,6 +247,7 @@ impl DikeTimelock {
             target: action.target,
         }
         .publish(&env);
+        bump(&env);
         Ok(action_id)
     }
 
@@ -223,6 +260,7 @@ impl DikeTimelock {
         action.cancelled = true;
         write_action(&env, &action);
         ActionCancelled { action_id }.publish(&env);
+        bump(&env);
         Ok(())
     }
 
@@ -247,31 +285,38 @@ impl DikeTimelock {
             return Err(DikeError::ActionConsumed);
         }
 
-        let gov = DikeGovernanceClient::new(&env, &action.target);
         match action.payload.clone() {
             TimelockPayload::Treasury(addr) => {
+                let gov = DikeGovernanceClient::new(&env, &action.target);
                 gov.apply_treasury(&addr);
             }
             TimelockPayload::Creator(addr, approved) => {
-                gov.apply_creator(&addr, &approved);
+                MarketFactoryClient::new(&env, &action.target)
+                    .set_creator_by_timelock(&addr, &approved);
             }
             TimelockPayload::CouncilMember(addr, approved) => {
-                gov.apply_council_member(&addr, &approved);
+                CouncilClient::new(&env, &action.target).set_member(&addr, &approved);
             }
             TimelockPayload::SupportedCollateral(addr, supported) => {
-                gov.apply_supported_collateral(&addr, &supported);
+                RegistryClient::new(&env, &action.target).set_supported_collateral(&addr, &supported);
             }
             TimelockPayload::ModuleAddress(role, module) => {
-                gov.apply_module(&role, &module);
+                RoleManagedClient::new(&env, &action.target).set_role(&role, &module);
             }
             TimelockPayload::Pause(authority) => {
+                let gov = DikeGovernanceClient::new(&env, &action.target);
                 gov.apply_pause_authority(&authority);
             }
             TimelockPayload::FeeConfig(config) => {
-                gov.apply_fee_config(&config);
+                FeeManagerClient::new(&env, &action.target).set_config(&config);
             }
             TimelockPayload::Upgrade(role, wasm_hash) => {
+                let gov = DikeGovernanceClient::new(&env, &action.target);
                 gov.record_upgrade_hash(&role, &wasm_hash);
+            }
+            TimelockPayload::Timelock(addr) => {
+                let gov = DikeGovernanceClient::new(&env, &action.target);
+                gov.apply_timelock(&addr);
             }
         }
 
@@ -282,10 +327,12 @@ impl DikeTimelock {
             kind: action.kind,
         }
         .publish(&env);
+        bump(&env);
         Ok(action)
     }
 
     pub fn action(env: Env, action_id: u64) -> Result<TimelockAction, DikeError> {
+        bump(&env);
         read_action(&env, action_id)
     }
 }

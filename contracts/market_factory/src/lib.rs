@@ -1,6 +1,6 @@
 #![no_std]
 
-use dike_types::{DikeError, FeeConfig, MarketConfig, MarketData, MarketStatus};
+use dike_types::{validate_fee_config, DikeError, FeeConfig, MarketConfig, MarketData};
 use soroban_sdk::{
     contract, contractclient, contractevent, contractimpl, contracttype,
     token::Client as TokenClient, Address, Env,
@@ -35,6 +35,12 @@ pub struct ModulesSet {}
 #[derive(Clone)]
 pub struct AdminSet {
     pub admin: Address,
+}
+
+#[contractevent(topics = ["governance"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct GovernanceSet {
+    pub governance: Address,
 }
 
 #[contractevent(topics = ["creator"], data_format = "single-value")]
@@ -104,6 +110,7 @@ pub trait FeeManagerInterface {
 #[contractclient(name = "DikeGovernanceClient")]
 pub trait DikeGovernanceInterface {
     fn treasury(env: Env) -> Result<Address, DikeError>;
+    fn timelock(env: Env) -> Result<Address, DikeError>;
 }
 
 fn bump(env: &Env) {
@@ -130,24 +137,18 @@ fn require_governance(env: &Env) -> Result<(), DikeError> {
     Ok(())
 }
 
+fn require_timelock(env: &Env) -> Result<(), DikeError> {
+    let governance = read_module(env, DataKey::Governance)?;
+    let timelock: Address = DikeGovernanceClient::new(env, &governance).timelock();
+    timelock.require_auth();
+    Ok(())
+}
+
 fn read_module(env: &Env, key: DataKey) -> Result<Address, DikeError> {
     env.storage()
         .instance()
         .get(&key)
         .ok_or(DikeError::NotInitialized)
-}
-
-fn validate_fee_config(config: &FeeConfig) -> Result<(), DikeError> {
-    let share_total = config.lp_fee_share_bps as u64
-        + config.treasury_fee_share_bps as u64
-        + config.cod_fee_share_bps as u64;
-    if share_total != 10_000 || config.trading_fee_bps > 1_000 {
-        return Err(DikeError::InvalidInput);
-    }
-    if config.council_reward < 0 || config.creation_fee < 0 {
-        return Err(DikeError::InvalidAmount);
-    }
-    Ok(())
 }
 
 fn validate(
@@ -241,6 +242,20 @@ impl DikeMarketFactory {
         Ok(())
     }
 
+    /// Recovery path for a misconfigured `governance` pointer set at
+    /// construction (used by `require_governance`/`require_timelock` — must
+    /// be the actual dike-governance contract address, not an EOA).
+    /// Admin-gated, matching `set_admin`'s rotation model.
+    pub fn set_governance(env: Env, governance: Address) -> Result<(), DikeError> {
+        require_admin(&env)?;
+        env.storage()
+            .instance()
+            .set(&DataKey::Governance, &governance);
+        GovernanceSet { governance }.publish(&env);
+        bump(&env);
+        Ok(())
+    }
+
     pub fn set_modules(
         env: Env,
         registry: Address,
@@ -272,6 +287,20 @@ impl DikeMarketFactory {
         Ok(())
     }
 
+    pub fn set_creator_by_timelock(
+        env: Env,
+        creator: Address,
+        approved: bool,
+    ) -> Result<(), DikeError> {
+        require_timelock(&env)?;
+        env.storage()
+            .instance()
+            .set(&DataKey::Creator(creator.clone()), &approved);
+        CreatorSet { creator, approved }.publish(&env);
+        bump(&env);
+        Ok(())
+    }
+
     pub fn set_collateral(env: Env, collateral: Address, supported: bool) -> Result<(), DikeError> {
         require_governance(&env)?;
         env.storage()
@@ -294,6 +323,12 @@ impl DikeMarketFactory {
         Ok(())
     }
 
+    /// Counter-divergence guarantee: `NextMarketId` is bumped LAST, after both
+    /// `registry.register_market` and `amm.create_pool` succeed.  Any failure
+    /// in those cross-contract calls propagates as a trap, causing Soroban to
+    /// revert the entire transaction write-set.  Registry, AMM, and factory
+    /// counters therefore can never diverge across a committed transaction —
+    /// either all three increment together, or none of them do.
     pub fn create_market(
         env: Env,
         config: MarketConfig,
@@ -346,8 +381,7 @@ impl DikeMarketFactory {
         }
         amm_client.seed_liquidity(&config.creator, &pool_id, &initial_liquidity);
         registry_client.activate_market(&market_id);
-        let mut market = registry_client.get_market(&market_id);
-        market.status = MarketStatus::Live;
+        let market = registry_client.get_market(&market_id);
         let next_market_id = market_id.checked_add(1).ok_or(DikeError::ArithmeticError)?;
         env.storage()
             .instance()
@@ -360,6 +394,22 @@ impl DikeMarketFactory {
         }
         .publish(&env);
         Ok(market)
+    }
+
+    pub fn is_creator(env: Env, creator: Address) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::Creator(creator))
+            .unwrap_or(false)
+    }
+
+    /// Returns the next market-id the factory will assign.  Used in tests to
+    /// verify the counter is unchanged after a failed create_market call.
+    pub fn next_market_id(env: Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&DataKey::NextMarketId)
+            .unwrap_or(1)
     }
 }
 

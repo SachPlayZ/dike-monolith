@@ -1,9 +1,12 @@
 #![no_std]
 
-use dike_types::{DikeError, FeeConfig};
+use dike_types::{validate_fee_config, DikeError, FeeConfig};
 use soroban_sdk::{
     contract, contractevent, contractimpl, contracttype, Address, BytesN, Env, Symbol,
 };
+
+const MIN_TTL: u32 = 17_280;
+const EXTEND_TTL: u32 = 518_400;
 
 #[contracttype]
 #[derive(Clone)]
@@ -91,6 +94,10 @@ pub struct UpgradeHashRecorded {
 #[contract]
 pub struct DikeGovernance;
 
+fn bump(env: &Env) {
+    env.storage().instance().extend_ttl(MIN_TTL, EXTEND_TTL);
+}
+
 fn require_admin(env: &Env) -> Result<(), DikeError> {
     let admin: Address = env
         .storage()
@@ -111,44 +118,49 @@ fn require_timelock(env: &Env) -> Result<(), DikeError> {
     Ok(())
 }
 
-fn validate_fee_config(config: &FeeConfig) -> Result<(), DikeError> {
-    let share_total = config.lp_fee_share_bps as u64
-        + config.treasury_fee_share_bps as u64
-        + config.cod_fee_share_bps as u64;
-    if share_total != 10_000 || config.trading_fee_bps > 1_000 {
-        return Err(DikeError::InvalidInput);
-    }
-    if config.council_reward < 0 || config.creation_fee < 0 {
-        return Err(DikeError::InvalidAmount);
-    }
-    Ok(())
-}
-
 #[contractimpl]
 impl DikeGovernance {
-    pub fn __constructor(env: Env, admin: Address, timelock: Address, treasury: Address) {
+    pub fn __constructor(env: Env, admin: Address, treasury: Address) {
         if env.storage().instance().has(&DataKey::Admin) {
             panic!("already initialized");
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
-        env.storage().instance().set(&DataKey::Timelock, &timelock);
         env.storage().instance().set(&DataKey::Treasury, &treasury);
         env.storage()
             .instance()
             .set(&DataKey::FeeConfig, &FeeConfig::default());
+        bump(&env);
     }
 
     pub fn set_admin(env: Env, admin: Address) -> Result<(), DikeError> {
         require_admin(&env)?;
         env.storage().instance().set(&DataKey::Admin, &admin);
         AdminSet { admin }.publish(&env);
+        bump(&env);
         Ok(())
     }
 
+    /// Bootstrap-once: sets the timelock address only when it has never been
+    /// set before.  Once `DataKey::Timelock` is written, subsequent calls
+    /// return `Err(AlreadyInitialized)`.  Further timelock address changes
+    /// must go through `apply_timelock`, which is gated by `require_timelock`
+    /// (i.e., through the timelock itself, enforcing the governance delay).
     pub fn set_timelock(env: Env, timelock: Address) -> Result<(), DikeError> {
         require_admin(&env)?;
+        if env.storage().instance().has(&DataKey::Timelock) {
+            return Err(DikeError::AlreadyInitialized);
+        }
         env.storage().instance().set(&DataKey::Timelock, &timelock);
         TimelockSet { timelock }.publish(&env);
+        bump(&env);
+        Ok(())
+    }
+
+    pub fn apply_timelock(env: Env, timelock: Address) -> Result<(), DikeError> {
+        require_timelock(&env)?;
+        env.storage().instance().set(&DataKey::Timelock, &timelock);
+        TimelockSet { timelock }.publish(&env);
+        bump(&env);
         Ok(())
     }
 
@@ -156,6 +168,7 @@ impl DikeGovernance {
         require_timelock(&env)?;
         env.storage().instance().set(&DataKey::Treasury, &treasury);
         TreasurySet { treasury }.publish(&env);
+        bump(&env);
         Ok(())
     }
 
@@ -165,6 +178,7 @@ impl DikeGovernance {
             .instance()
             .set(&DataKey::Creator(creator.clone()), &approved);
         CreatorSet { creator, approved }.publish(&env);
+        bump(&env);
         Ok(())
     }
 
@@ -178,6 +192,7 @@ impl DikeGovernance {
             .instance()
             .set(&DataKey::CouncilMember(member.clone()), &approved);
         CouncilMemberSet { member, approved }.publish(&env);
+        bump(&env);
         Ok(())
     }
 
@@ -196,6 +211,7 @@ impl DikeGovernance {
             supported,
         }
         .publish(&env);
+        bump(&env);
         Ok(())
     }
 
@@ -205,6 +221,7 @@ impl DikeGovernance {
             .instance()
             .set(&DataKey::Module(role.clone()), &module);
         ModuleSet { role, module }.publish(&env);
+        bump(&env);
         Ok(())
     }
 
@@ -214,6 +231,7 @@ impl DikeGovernance {
             .instance()
             .set(&DataKey::PauseAuthority, &authority);
         PauseAuthoritySet { authority }.publish(&env);
+        bump(&env);
         Ok(())
     }
 
@@ -222,6 +240,7 @@ impl DikeGovernance {
         validate_fee_config(&config)?;
         env.storage().instance().set(&DataKey::FeeConfig, &config);
         FeeConfigSet {}.publish(&env);
+        bump(&env);
         Ok(())
     }
 
@@ -239,17 +258,28 @@ impl DikeGovernance {
             wasm_hash,
         }
         .publish(&env);
+        bump(&env);
         Ok(())
     }
 
     pub fn treasury(env: Env) -> Result<Address, DikeError> {
+        bump(&env);
         env.storage()
             .instance()
             .get(&DataKey::Treasury)
             .ok_or(DikeError::NotInitialized)
     }
 
+    pub fn timelock(env: Env) -> Result<Address, DikeError> {
+        bump(&env);
+        env.storage()
+            .instance()
+            .get(&DataKey::Timelock)
+            .ok_or(DikeError::NotInitialized)
+    }
+
     pub fn is_creator(env: Env, creator: Address) -> bool {
+        bump(&env);
         env.storage()
             .instance()
             .get(&DataKey::Creator(creator))
@@ -257,6 +287,7 @@ impl DikeGovernance {
     }
 
     pub fn is_council_member(env: Env, member: Address) -> bool {
+        bump(&env);
         env.storage()
             .instance()
             .get(&DataKey::CouncilMember(member))
@@ -264,6 +295,7 @@ impl DikeGovernance {
     }
 
     pub fn is_supported_collateral(env: Env, collateral: Address) -> bool {
+        bump(&env);
         env.storage()
             .instance()
             .get(&DataKey::SupportedCollateral(collateral))
@@ -271,6 +303,7 @@ impl DikeGovernance {
     }
 
     pub fn module(env: Env, role: Symbol) -> Result<Address, DikeError> {
+        bump(&env);
         env.storage()
             .instance()
             .get(&DataKey::Module(role))
@@ -278,10 +311,19 @@ impl DikeGovernance {
     }
 
     pub fn fee_config(env: Env) -> FeeConfig {
+        bump(&env);
         env.storage()
             .instance()
             .get(&DataKey::FeeConfig)
             .unwrap_or_default()
+    }
+
+    pub fn pause_authority(env: Env) -> Result<Address, DikeError> {
+        bump(&env);
+        env.storage()
+            .instance()
+            .get(&DataKey::PauseAuthority)
+            .ok_or(DikeError::NotInitialized)
     }
 }
 

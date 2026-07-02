@@ -583,3 +583,89 @@ fn cancelled_market_allows_lp_position_recovery_but_not_trading() {
     assert_eq!(tokens.balance(&lp, &1, &Outcome::Yes), 10_000);
     assert_eq!(tokens.balance(&lp, &1, &Outcome::No), 10_000);
 }
+
+// --- Item 2: unauthorized-caller negative-auth tests ---
+
+#[test]
+fn role_gated_fns_reject_unconfigured_role() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(DikeAMM, (&admin,));
+    let client = DikeAMMClient::new(&env, &id);
+    // gov role not configured
+    assert!(matches!(
+        client.try_pause(&true),
+        Err(Ok(DikeError::Unauthorized))
+    ));
+    // factory role not configured
+    assert!(matches!(
+        client.try_create_pool(&1, &FeeConfig::default()),
+        Err(Ok(DikeError::Unauthorized))
+    ));
+}
+
+#[test]
+fn admin_gated_fns_reject_wrong_signer() {
+    let env = Env::default(); // no mock_all_auths
+    let admin = Address::generate(&env);
+    let id = env.register(DikeAMM, (&admin,));
+    let client = DikeAMMClient::new(&env, &id);
+    let other = Address::generate(&env);
+    assert!(client.try_set_admin(&other).is_err());
+    assert!(client
+        .try_set_role(&symbol_short!("gov"), &other)
+        .is_err());
+    assert!(client
+        .try_set_modules(&other, &other, &other, &other)
+        .is_err());
+}
+
+#[test]
+fn sell_quote_average_price_matches_buy_side_convention() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(1);
+    let admin = Address::generate(&env);
+    let factory = Address::generate(&env);
+    let lp = Address::generate(&env);
+    let trader = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token = env
+        .register_stellar_asset_contract_v2(token_admin.clone())
+        .address();
+    let stellar = StellarAssetClient::new(&env, &token);
+    stellar.mint(&lp, &20_000);
+    stellar.mint(&trader, &20_000);
+
+    let vault_id = env.register(CollateralVault, (&admin, &admin));
+    let vault = CollateralVaultClient::new(&env, &vault_id);
+    let tokens_id = env.register(DikeConditionalTokens, (&admin,));
+    let tokens = DikeConditionalTokensClient::new(&env, &tokens_id);
+    let registry_id = env.register(LiveRegistry, (&token,));
+    let id = env.register(DikeAMM, (&admin,));
+    let client = DikeAMMClient::new(&env, &id);
+    client.set_role(&symbol_short!("factory"), &factory);
+    vault.set_role(&symbol_short!("amm"), &id);
+    vault.set_role(&symbol_short!("tokens"), &tokens_id);
+    vault.set_role(&symbol_short!("registry"), &registry_id);
+    tokens.set_role(&symbol_short!("amm"), &id);
+    tokens.set_role(&symbol_short!("vault"), &vault_id);
+    client.set_modules(&vault_id, &tokens_id, &token, &registry_id);
+
+    let pool_id = client.create_pool(&1, &FeeConfig::default());
+    client.seed_liquidity(&lp, &pool_id, &10_000);
+
+    let tokens_out = client.buy_yes(&trader, &pool_id, &1_000, &1, &100);
+    assert!(tokens_out > 0);
+
+    let buy_quote = client.quote_buy_yes(&pool_id, &1_000);
+    let sell_quote = client.quote_sell_yes(&pool_id, &tokens_out);
+
+    // A single outcome token can never be worth more than 1 unit of
+    // collateral, so average_price_bps (collateral-per-token, scaled by
+    // 10_000) must never exceed 10_000. Previously the sell quote computed
+    // tokens-per-collateral (the inverse), which routinely broke this bound.
+    assert!(buy_quote.average_price_bps > 0 && buy_quote.average_price_bps <= 10_000);
+    assert!(sell_quote.average_price_bps > 0 && sell_quote.average_price_bps <= 10_000);
+}

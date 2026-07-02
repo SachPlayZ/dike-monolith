@@ -74,6 +74,7 @@ pub enum TimelockActionKind {
     ModuleAddress,
     Pause,
     Upgrade,
+    Timelock,
 }
 
 #[contracttype]
@@ -98,6 +99,22 @@ impl Default for FeeConfig {
             creation_fee: 0,
         }
     }
+}
+
+/// Shared validation for `FeeConfig`.  All three share percentages must sum to
+/// exactly 10 000 bps, trading fee must not exceed 10 % (1 000 bps), and
+/// `council_reward` / `creation_fee` must be non-negative.
+pub fn validate_fee_config(config: &FeeConfig) -> Result<(), DikeError> {
+    let share_total = config.lp_fee_share_bps as u64
+        + config.treasury_fee_share_bps as u64
+        + config.cod_fee_share_bps as u64;
+    if share_total != 10_000 || config.trading_fee_bps > 1_000 {
+        return Err(DikeError::InvalidInput);
+    }
+    if config.council_reward < 0 || config.creation_fee < 0 {
+        return Err(DikeError::InvalidAmount);
+    }
+    Ok(())
 }
 
 #[contracttype]
@@ -257,6 +274,39 @@ pub enum TimelockPayload {
     Pause(Address),
     FeeConfig(FeeConfig),
     Upgrade(Symbol, BytesN<32>),
+    Timelock(Address),
+}
+
+impl TimelockPayload {
+    /// `kind` is caller-supplied at `queue()` time purely for off-chain
+    /// observability (it's what shows up in `ActionQueued`/`ActionExecuted`
+    /// events). `execute()` dispatches on `payload`'s variant alone, so a
+    /// mismatched `kind` would let a proposer label a dangerous payload
+    /// (e.g. `Timelock(attacker)`) under a benign-looking kind (e.g.
+    /// `Creator`). Reject that at `queue()` time.
+    pub fn matches_kind(&self, kind: &TimelockActionKind) -> bool {
+        matches!(
+            (self, kind),
+            (TimelockPayload::Treasury(_), TimelockActionKind::Treasury)
+                | (TimelockPayload::Creator(_, _), TimelockActionKind::Creator)
+                | (
+                    TimelockPayload::CouncilMember(_, _),
+                    TimelockActionKind::CouncilMember
+                )
+                | (
+                    TimelockPayload::SupportedCollateral(_, _),
+                    TimelockActionKind::SupportedCollateral
+                )
+                | (
+                    TimelockPayload::ModuleAddress(_, _),
+                    TimelockActionKind::ModuleAddress
+                )
+                | (TimelockPayload::Pause(_), TimelockActionKind::Pause)
+                | (TimelockPayload::FeeConfig(_), TimelockActionKind::FeeConfig)
+                | (TimelockPayload::Upgrade(_, _), TimelockActionKind::Upgrade)
+                | (TimelockPayload::Timelock(_), TimelockActionKind::Timelock)
+        )
+    }
 }
 
 #[contracttype]

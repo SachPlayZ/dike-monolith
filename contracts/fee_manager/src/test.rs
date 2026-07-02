@@ -28,3 +28,20 @@ fn constructor_rejects_invalid_bond_config() {
 
     let _id = env.register(FeeManager, (&admin, &gov, &0i128, &10_001u32));
 }
+
+// --- Item 2: unauthorized-caller negative-auth tests ---
+
+#[test]
+fn admin_and_governance_gated_fns_reject_wrong_signer() {
+    let env = Env::default(); // no mock_all_auths
+    let admin = Address::generate(&env);
+    let gov = Address::generate(&env);
+    let id = env.register(FeeManager, (&admin, &gov, &500i128, &100u32));
+    let client = FeeManagerClient::new(&env, &id);
+    let other = Address::generate(&env);
+    // set_admin gated by admin.require_auth()
+    assert!(client.try_set_admin(&other).is_err());
+    assert!(client.try_set_governance(&other).is_err());
+    // set_config gated by gov.require_auth()
+    assert!(client.try_set_config(&FeeConfig::default()).is_err());
+}

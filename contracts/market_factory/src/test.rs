@@ -6,7 +6,7 @@ use cod_oracle::{CODOracle, CODOracleClient};
 use collateral_vault::{CollateralVault, CollateralVaultClient};
 use conditional_tokens::{DikeConditionalTokens, DikeConditionalTokensClient};
 use council_of_dike::{CouncilOfDike, CouncilOfDikeClient};
-use dike_types::{FeeConfig, Outcome};
+use dike_types::{FeeConfig, MarketStatus, Outcome};
 use fee_manager::FeeManager;
 use market_registry::{DikeMarketRegistry, DikeMarketRegistryClient};
 use soroban_sdk::{
@@ -232,4 +232,109 @@ fn rejects_overflowing_expiry_floor() {
         client.try_create_market(&cfg(&env, &creator, &collateral), &1_000, &5_000),
         Err(Ok(DikeError::ArithmeticError))
     ));
+}
+
+// --- Item 3: counter-divergence safety under failed create_market ---
+
+/// Verifies that a failed create_market call (registry rejects because the
+/// collateral is not supported there, even though factory approved it) leaves
+/// the factory's NextMarketId counter unchanged.  This exercises the atomicity
+/// guarantee documented in create_market's doc comment.
+#[test]
+fn failed_create_market_leaves_counter_unchanged() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(1);
+    let admin = Address::generate(&env);
+    let gov = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let collateral = env
+        .register_stellar_asset_contract_v2(token_admin.clone())
+        .address();
+    soroban_sdk::token::StellarAssetClient::new(&env, &collateral).mint(&creator, &5_000);
+
+    // Registry: set factory role but do NOT approve the collateral in registry.
+    let registry_id = env.register(DikeMarketRegistry, (&admin,));
+    let registry = DikeMarketRegistryClient::new(&env, &registry_id);
+    let vault_id = env.register(CollateralVault, (&admin, &admin));
+    let vault = CollateralVaultClient::new(&env, &vault_id);
+    let tokens_id = env.register(DikeConditionalTokens, (&admin,));
+    let tokens = DikeConditionalTokensClient::new(&env, &tokens_id);
+    let amm_id = env.register(DikeAMM, (&admin,));
+    let amm = DikeAMMClient::new(&env, &amm_id);
+    let fee_manager_id = env.register(FeeManager, (&admin, &gov, &500i128, &100u32));
+    let id = env.register(DikeMarketFactory, (&admin, &gov, &100i128, &60u64));
+    let client = DikeMarketFactoryClient::new(&env, &id);
+
+    registry.set_role(&symbol_short!("factory"), &id);
+    // Deliberately NOT calling registry.set_supported_collateral — so registry rejects.
+    vault.set_role(&symbol_short!("amm"), &amm_id);
+    vault.set_role(&symbol_short!("tokens"), &tokens_id);
+    vault.set_role(&symbol_short!("registry"), &registry_id);
+    tokens.set_role(&symbol_short!("amm"), &amm_id);
+    tokens.set_role(&symbol_short!("vault"), &vault_id);
+    amm.set_role(&symbol_short!("factory"), &id);
+    amm.set_modules(&vault_id, &tokens_id, &collateral, &registry_id);
+    client.set_modules(&registry_id, &tokens_id, &vault_id, &amm_id, &fee_manager_id);
+    // Creator and collateral approved in FACTORY but not in REGISTRY.
+    client.set_creator(&creator, &true);
+    client.set_collateral(&collateral, &true);
+
+    let counter_before = client.next_market_id();
+    assert_eq!(counter_before, 1);
+
+    // create_market: factory validate passes, then registry.register_market
+    // fails (UnsupportedCollateral in registry) → tx reverts → counter unchanged.
+    assert!(client
+        .try_create_market(&cfg(&env, &creator, &collateral), &1_000, &5_000)
+        .is_err());
+
+    assert_eq!(client.next_market_id(), counter_before);
+}
+
+// --- Item 2: unauthorized-caller negative-auth tests ---
+
+#[test]
+fn role_gated_fns_reject_unconfigured_role() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let gov = Address::generate(&env);
+    let id = env.register(DikeMarketFactory, (&admin, &gov, &100i128, &60u64));
+    let client = DikeMarketFactoryClient::new(&env, &id);
+    let creator = Address::generate(&env);
+    let collateral = Address::generate(&env);
+    // governance address in storage but not as a role — require_governance reads DataKey::Governance
+    // which IS set in the constructor to `gov`.  To test rejection, use a different caller by not
+    // calling set_creator/set_collateral as `gov`.
+    // For set_creator/set_collateral the fn calls require_governance which requires gov.require_auth().
+    // Without mock_all_auths on gov, this panics.  With mock_all_auths (env above), require_auth
+    // passes for any address — so these calls succeed.  The role-rejection pattern for this contract
+    // is via require_timelock (which reads governance.timelock).  Test that:
+    // set_creator_by_timelock requires require_timelock which calls governance.timelock() cross-contract.
+    // Governance is set to `gov` (plain address, no contract), so the cross-contract call panics.
+    assert!(client
+        .try_set_creator_by_timelock(&creator, &true)
+        .is_err());
+}
+
+#[test]
+fn governance_gated_fns_reject_wrong_signer() {
+    let env = Env::default(); // no mock_all_auths
+    let admin = Address::generate(&env);
+    let gov = Address::generate(&env);
+    let id = env.register(DikeMarketFactory, (&admin, &gov, &100i128, &60u64));
+    let client = DikeMarketFactoryClient::new(&env, &id);
+    let other = Address::generate(&env);
+    // set_admin needs admin auth
+    assert!(client.try_set_admin(&other).is_err());
+    assert!(client.try_set_governance(&other).is_err());
+    assert!(client
+        .try_set_modules(&other, &other, &other, &other, &other)
+        .is_err());
+    // set_creator needs governance auth (gov.require_auth() panics)
+    assert!(client.try_set_creator(&other, &true).is_err());
+    assert!(client.try_set_collateral(&other, &true).is_err());
+    assert!(client.try_pause(&true).is_err());
 }

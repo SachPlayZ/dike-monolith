@@ -33,6 +33,7 @@ pub enum DataKey {
     BondToken(u64, Address, bool),
     BondMarket(u64, Address, bool),
     Redeemed(u64, Address, Outcome),
+    InvalidDustCarry(u64),
     Paused,
 }
 
@@ -107,16 +108,6 @@ pub struct ChildCollateralRepaid {
     pub parent_market_id: u64,
     #[topic]
     pub child_market_id: u64,
-    pub user: Address,
-    pub amount: i128,
-}
-
-#[contractevent(topics = ["release"], data_format = "single-value")]
-#[derive(Clone)]
-pub struct MergeRelease {
-    #[topic]
-    pub market_id: u64,
-    #[topic]
     pub user: Address,
     pub amount: i128,
 }
@@ -523,36 +514,6 @@ impl CollateralVault {
         Ok(())
     }
 
-    pub fn release_on_merge(
-        env: Env,
-        token: Address,
-        user: Address,
-        market_id: u64,
-        amount: i128,
-    ) -> Result<(), DikeError> {
-        require_role(&env, symbol_short!("tokens"))?;
-        if amount <= 0 {
-            return Err(DikeError::InvalidAmount);
-        }
-        require_market_collateral(&env, &token, market_id)?;
-        let mut accounting = read_accounting(&env, market_id);
-        if accounting.collateral_backing < amount || accounting.refundable < amount {
-            return Err(DikeError::InsufficientCollateral);
-        }
-        reduce_user_deposit(&env, market_id, user.clone(), amount)?;
-        accounting.collateral_backing = checked_sub(accounting.collateral_backing, amount)?;
-        accounting.refundable = checked_sub(accounting.refundable, amount)?;
-        write_accounting(&env, market_id, &accounting);
-        transfer_token(&env, &token, &env.current_contract_address(), &user, amount);
-        MergeRelease {
-            market_id,
-            user,
-            amount,
-        }
-        .publish(&env);
-        Ok(())
-    }
-
     pub fn fund_child_prediction(
         env: Env,
         _user: Address,
@@ -700,14 +661,14 @@ impl CollateralVault {
         {
             return Err(DikeError::EncumberedPosition);
         }
-        let stake_key = root_stake_key(market_id, user.clone(), outcome);
-        let deposit_key = user_deposit_key(market_id, user.clone());
-        let _ = saturating_sub_i128(&env, &stake_key, tokens_sold)?;
-        let _ = saturating_sub_i128(&env, &deposit_key, payout)?;
         let mut accounting = read_accounting(&env, market_id);
         if accounting.collateral_backing < payout || accounting.refundable < payout {
             return Err(DikeError::InsufficientCollateral);
         }
+        let stake_key = root_stake_key(market_id, user.clone(), outcome);
+        let deposit_key = user_deposit_key(market_id, user.clone());
+        let _ = saturating_sub_i128(&env, &stake_key, tokens_sold)?;
+        let _ = saturating_sub_i128(&env, &deposit_key, payout)?;
         accounting.collateral_backing = checked_sub(accounting.collateral_backing, payout)?;
         accounting.refundable = checked_sub(accounting.refundable, payout)?;
         write_accounting(&env, market_id, &accounting);
@@ -749,15 +710,18 @@ impl CollateralVault {
             return Err(DikeError::UnsupportedCollateral);
         }
         let final_outcome = registry_client.get_final_outcome(&market_id);
-        DikeTokensClient::new(&env, &tokens).burn_for_redeem(
-            &user,
-            &market_id,
-            &redeemed_outcome,
-            &amount,
-        );
 
         let gross_payout = match final_outcome {
-            Outcome::Invalid => invalid_refund(amount)?,
+            Outcome::Invalid => {
+                // Fold in per-market carry so odd-stroop dust is never lost.
+                let carry_key = DataKey::InvalidDustCarry(market_id);
+                let carry = read_i128(&env, &carry_key);
+                let effective = checked_add(carry, amount)?;
+                let refund = invalid_refund(effective)?;
+                let new_carry = checked_sub(effective, checked_add(refund, refund)?)?;
+                write_i128(&env, &carry_key, new_carry);
+                refund
+            }
             Outcome::Yes => {
                 if redeemed_outcome == Outcome::Yes {
                     amount
@@ -873,11 +837,22 @@ impl CollateralVault {
         }
 
         if gross_payout > 0 {
-            let mut accounting = read_accounting(&env, market_id);
+            let accounting = read_accounting(&env, market_id);
             let max_remaining = checked_sub(accounting.collateral_backing, accounting.redeemed)?;
             if gross_payout > max_remaining {
                 return Err(DikeError::InsufficientCollateral);
             }
+        }
+
+        DikeTokensClient::new(&env, &tokens).burn_for_redeem(
+            &user,
+            &market_id,
+            &redeemed_outcome,
+            &amount,
+        );
+
+        if gross_payout > 0 {
+            let mut accounting = read_accounting(&env, market_id);
             let deposit_key = user_deposit_key(market_id, user.clone());
             let stake_key = root_stake_key(market_id, user.clone(), redeemed_outcome);
             let _ = saturating_sub_i128(&env, &deposit_key, gross_payout)?;
@@ -928,7 +903,13 @@ impl CollateralVault {
             &redeemed_outcome,
             &amount,
         );
-        let payout = invalid_refund(amount)?;
+        // Fold in any prior dust carry so odd-stroop remainders never vanish.
+        let carry_key = DataKey::InvalidDustCarry(market_id);
+        let carry = read_i128(&env, &carry_key);
+        let effective = checked_add(carry, amount)?;
+        let payout = invalid_refund(effective)?;
+        let new_carry = checked_sub(effective, checked_add(payout, payout)?)?;
+        write_i128(&env, &carry_key, new_carry);
         if payout > 0 {
             let mut accounting = read_accounting(&env, market_id);
             let max_remaining = checked_sub(accounting.collateral_backing, accounting.redeemed)?;

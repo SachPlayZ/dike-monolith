@@ -307,7 +307,12 @@ impl CODOracle {
         bond_amount: i128,
         dispute_window: u64,
     ) -> Result<u64, DikeError> {
+        // Intentional keeper path: anyone may request resolution once a market has
+        // expired, because liveness matters more than proposer identity here.
         ensure_not_paused(&env)?;
+        if rules_uri.is_empty() || bond_amount <= 0 || dispute_window == 0 {
+            return Err(DikeError::InvalidInput);
+        }
         let registry = read_role(&env, symbol_short!("registry"))?;
         let registry_client = DikeRegistryClient::new(&env, &registry);
         let market = registry_client.get_market(&market_id);
@@ -332,9 +337,6 @@ impl CODOracle {
             registry_client.close_trading(&market_id);
         } else if market.status != MarketStatus::TradingClosed {
             return Err(DikeError::InvalidStatus);
-        }
-        if rules_uri.is_empty() || bond_amount <= 0 || dispute_window == 0 {
-            return Err(DikeError::InvalidInput);
         }
         if env
             .storage()
@@ -493,6 +495,8 @@ impl CODOracle {
     }
 
     pub fn finalize_undisputed(env: Env, request_id: u64) -> Result<Outcome, DikeError> {
+        // Intentional keeper path: once the dispute window has elapsed, any caller
+        // may finalize the undisputed request to avoid stalled markets.
         let mut request = read_request(&env, request_id)?;
         if request.status != OracleStatus::Proposed {
             return Err(DikeError::InvalidStatus);
@@ -529,6 +533,8 @@ impl CODOracle {
     }
 
     pub fn escalate_to_council(env: Env, request_id: u64) -> Result<(), DikeError> {
+        // Intentional keeper path: any caller may push a disputed request into
+        // council voting so the protocol cannot be griefed into a stuck state.
         let mut request = read_request(&env, request_id)?;
         if request.status != OracleStatus::Disputed {
             return Err(DikeError::InvalidStatus);
@@ -560,6 +566,15 @@ impl CODOracle {
         Ok(())
     }
 
+    /// Atomicity guarantee for the sequential bond distribution below:
+    ///
+    /// `vault_client.release_bond` and `vault_client.slash_bond` are called via
+    /// the generated non-Try client.  Any `Err` or trap returned by a nested
+    /// call propagates as a trap/panic, which causes Soroban to revert the
+    /// *entire* top-level transaction write-set — including storage mutations and
+    /// token transfers from all prior steps in this same invocation.  Therefore
+    /// bonds can never be partially distributed: either every slash/release in
+    /// this function commits atomically, or none of them do.
     pub fn report_council_outcome(
         env: Env,
         request_id: u64,

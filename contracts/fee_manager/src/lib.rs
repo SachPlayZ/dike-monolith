@@ -2,10 +2,13 @@
 
 use dike_math::{bps, checked_sub, required_bond};
 use dike_types::{
-    DikeError, FeeConfig, DEFAULT_COUNCIL_BOND_SHARE_BPS, DEFAULT_TREASURY_BOND_SHARE_BPS,
-    DEFAULT_WINNER_BOND_SHARE_BPS,
+    validate_fee_config, DikeError, FeeConfig, DEFAULT_COUNCIL_BOND_SHARE_BPS,
+    DEFAULT_TREASURY_BOND_SHARE_BPS, DEFAULT_WINNER_BOND_SHARE_BPS,
 };
 use soroban_sdk::{contract, contractevent, contractimpl, contracttype, Address, Env};
+
+const MIN_TTL: u32 = 17_280;
+const EXTEND_TTL: u32 = 518_400;
 
 #[contracttype]
 #[derive(Clone)]
@@ -24,6 +27,12 @@ pub enum DataKey {
 #[derive(Clone)]
 pub struct AdminSet {
     pub admin: Address,
+}
+
+#[contractevent(topics = ["governance"], data_format = "single-value")]
+#[derive(Clone)]
+pub struct GovernanceSet {
+    pub governance: Address,
 }
 
 #[contractevent(topics = ["fee_cfg"])]
@@ -48,6 +57,10 @@ pub struct BondSplitSet {
 #[contract]
 pub struct FeeManager;
 
+fn bump(env: &Env) {
+    env.storage().instance().extend_ttl(MIN_TTL, EXTEND_TTL);
+}
+
 fn require_governance(env: &Env) -> Result<(), DikeError> {
     let gov: Address = env
         .storage()
@@ -65,22 +78,6 @@ fn require_admin(env: &Env) -> Result<(), DikeError> {
         .get(&DataKey::Admin)
         .ok_or(DikeError::NotInitialized)?;
     admin.require_auth();
-    Ok(())
-}
-
-fn validate_fee_config(config: &FeeConfig) -> Result<(), DikeError> {
-    let share_total = config.lp_fee_share_bps as u64
-        + config.treasury_fee_share_bps as u64
-        + config.cod_fee_share_bps as u64;
-    if share_total != 10_000 {
-        return Err(DikeError::InvalidInput);
-    }
-    if config.trading_fee_bps > 1_000 {
-        return Err(DikeError::InvalidInput);
-    }
-    if config.council_reward < 0 || config.creation_fee < 0 {
-        return Err(DikeError::InvalidAmount);
-    }
     Ok(())
 }
 
@@ -121,12 +118,27 @@ impl FeeManager {
             &DataKey::TreasuryBondShareBps,
             &DEFAULT_TREASURY_BOND_SHARE_BPS,
         );
+        bump(&env);
     }
 
     pub fn set_admin(env: Env, admin: Address) -> Result<(), DikeError> {
         require_admin(&env)?;
         env.storage().instance().set(&DataKey::Admin, &admin);
         AdminSet { admin }.publish(&env);
+        bump(&env);
+        Ok(())
+    }
+
+    /// Recovery path for a misconfigured `governance` pointer set at
+    /// construction (used by `require_governance`). Admin-gated, matching
+    /// `set_admin`'s rotation model.
+    pub fn set_governance(env: Env, governance: Address) -> Result<(), DikeError> {
+        require_admin(&env)?;
+        env.storage()
+            .instance()
+            .set(&DataKey::Governance, &governance);
+        GovernanceSet { governance }.publish(&env);
+        bump(&env);
         Ok(())
     }
 
@@ -135,6 +147,7 @@ impl FeeManager {
         validate_fee_config(&config)?;
         env.storage().instance().set(&DataKey::Config, &config);
         FeeConfigSet {}.publish(&env);
+        bump(&env);
         Ok(())
     }
 
@@ -152,6 +165,7 @@ impl FeeManager {
             bond_bps,
         }
         .publish(&env);
+        bump(&env);
         Ok(())
     }
 
@@ -180,10 +194,12 @@ impl FeeManager {
             treasury_bps,
         }
         .publish(&env);
+        bump(&env);
         Ok(())
     }
 
     pub fn config(env: Env) -> FeeConfig {
+        bump(&env);
         env.storage()
             .instance()
             .get(&DataKey::Config)
@@ -191,12 +207,14 @@ impl FeeManager {
     }
 
     pub fn required_bond(env: Env, market_liquidity: i128) -> Result<i128, DikeError> {
+        bump(&env);
         let minimum_bond: i128 = env.storage().instance().get(&DataKey::MinBond).unwrap_or(0);
         let bond_bps: u32 = env.storage().instance().get(&DataKey::BondBps).unwrap_or(0);
         required_bond(minimum_bond, market_liquidity, bond_bps)
     }
 
     pub fn trading_fee(env: Env, amount: i128) -> Result<(i128, i128, i128, i128), DikeError> {
+        bump(&env);
         if amount <= 0 {
             return Err(DikeError::InvalidAmount);
         }
@@ -213,6 +231,7 @@ impl FeeManager {
         env: Env,
         amount: i128,
     ) -> Result<(i128, i128, i128, i128), DikeError> {
+        bump(&env);
         if amount <= 0 {
             return Err(DikeError::InvalidAmount);
         }
