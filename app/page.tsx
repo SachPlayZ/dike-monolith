@@ -42,15 +42,15 @@ export default function LandingPage() {
         </div>
         <div className="relative z-10 flex flex-col items-center justify-center min-h-screen">
           <h1
-            className={`${instrumentSerif.className} text-white text-center text-balance font-normal tracking-tight text-7xl z-10`}
+            className={`${instrumentSerif.className} text-white text-center text-balance font-normal tracking-tight text-4xl sm:text-5xl md:text-6xl lg:text-7xl z-10 px-6`}
           >
             infinite worlds.
             <br />
             infinite possibilities.
           </h1>
-          <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2 w-full flex justify-center z-10">
+          <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2 w-full flex justify-center z-10 px-6">
             <p
-              className={`${instrumentSerif.className} text-white text-center text-balance font-normal tracking-tight mb-20 text-3xl`}
+              className={`${instrumentSerif.className} text-white text-center text-balance font-normal tracking-tight mb-20 text-lg sm:text-xl md:text-2xl lg:text-3xl`}
             >
               One stake. Multiple predictions.
               <br />
@@ -79,15 +79,15 @@ export default function LandingPage() {
         </div>
 
         {/* Top Half - Heading and Explanation */}
-        <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-8 pb-0">
-          <div className="max-w-6xl w-full ms-60">
+        <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 md:px-8 pb-0">
+          <div className="max-w-6xl w-full">
             <h1
-              className={`${instrumentSerif.className} text-white text-left text-balance font-normal tracking-tight text-7xl mb-8 max-w-4xl`}
+              className={`${instrumentSerif.className} text-white text-left text-balance font-normal tracking-tight text-3xl sm:text-4xl md:text-5xl lg:text-7xl mb-6 md:mb-8 max-w-4xl`}
             >
               Unlocking <i>Capital Efficiency</i> in Prediction Markets
             </h1>
             <p
-              className={`${instrumentSans.className} text-white text-left text-balance font-normal tracking-tight text-lg leading-relaxed max-w-5xl`}
+              className={`${instrumentSans.className} text-white text-left text-balance font-normal tracking-tight text-base sm:text-lg leading-relaxed max-w-5xl`}
             >
               Traditional prediction markets silo capital;{" "}
               <b>DIKE liberates it.</b> Through a multiverse of conditional
@@ -99,49 +99,49 @@ export default function LandingPage() {
         </div>
 
         {/* Bottom Half - Key Features */}
-        <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-8 pt-0">
+        <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 md:px-8 pt-0">
           <b>
             <div className="max-w-6xl w-full">
               <h2
-                className={`${instrumentSerif.className} text-black text-center text-balance font-bold tracking-tight text-7xl mb-12`}
+                className={`${instrumentSerif.className} text-black text-center text-balance font-bold tracking-tight text-4xl sm:text-5xl md:text-6xl lg:text-7xl mb-8 md:mb-12`}
               >
                 Key Features
               </h2>
-              <div className="flex items-start justify-center gap-0">
-                <div className="flex-1 flex flex-col items-center text-center px-8">
+              <div className="flex flex-col md:flex-row items-center md:items-start justify-center gap-8 md:gap-0">
+                <div className="flex-1 flex flex-col items-center text-center px-4 md:px-8">
                   <h3
-                    className={`${instrumentSerif.className} text-black font-bold tracking-tight text-5xl mb-3`}
+                    className={`${instrumentSerif.className} text-black font-bold tracking-tight text-3xl sm:text-4xl md:text-5xl mb-3`}
                   >
                     Prediction Chaining
                   </h3>
                   <p
-                    className={`${instrumentSans.className} text-black/80 font-bold text-xl leading-relaxed`}
+                    className={`${instrumentSans.className} text-black/80 font-bold text-base sm:text-lg md:text-xl leading-relaxed`}
                   >
                     Link bets, maximize capital. Collateralize new predictions.
                   </p>
                 </div>
-                <div className="w-px h-16 bg-black/20 self-center"></div>
-                <div className="flex-1 flex flex-col items-center text-center px-8">
+                <div className="w-full h-px md:w-px md:h-16 bg-black/20 self-center"></div>
+                <div className="flex-1 flex flex-col items-center text-center px-4 md:px-8">
                   <h3
-                    className={`${instrumentSerif.className} text-black font-bold tracking-tight text-5xl mb-3`}
+                    className={`${instrumentSerif.className} text-black font-bold tracking-tight text-3xl sm:text-4xl md:text-5xl mb-3`}
                   >
                     Multiverse Finance
                   </h3>
                   <p
-                    className={`${instrumentSans.className} text-black/80 font-bold text-xl leading-relaxed`}
+                    className={`${instrumentSans.className} text-black/80 font-bold text-base sm:text-lg md:text-xl leading-relaxed`}
                   >
                     Explore conditional outcomes across parallel realities.
                   </p>
                 </div>
-                <div className="w-px h-16 bg-black/20 self-center"></div>
-                <div className="flex-1 flex flex-col items-center text-center px-8">
+                <div className="w-full h-px md:w-px md:h-16 bg-black/20 self-center"></div>
+                <div className="flex-1 flex flex-col items-center text-center px-4 md:px-8">
                   <h3
-                    className={`${instrumentSerif.className} text-black font-bold tracking-tight text-5xl mb-3`}
+                    className={`${instrumentSerif.className} text-black font-bold tracking-tight text-3xl sm:text-4xl md:text-5xl mb-3`}
                   >
                     Capital Efficiency
                   </h3>
                   <p
-                    className={`${instrumentSans.className} text-black/80 font-bold text-xl leading-relaxed`}
+                    className={`${instrumentSans.className} text-black/80 font-bold text-base sm:text-lg md:text-xl leading-relaxed`}
                   >
                     Reduce siloed funds, potential returns.
                   </p>
@@ -171,13 +171,13 @@ export default function LandingPage() {
             offsetY={-0.35}
           />
         </div>
-        <div className="relative z-10 flex flex-col items-center justify-center px-8 max-w-6xl mx-auto text-center">
+        <div className="relative z-10 flex flex-col items-center justify-center px-6 md:px-8 max-w-6xl mx-auto text-center">
           <div
-            className={`${instrumentSerif.className} text-white text-6xl leading-relaxed mb-12 mt-20`}
+            className={`${instrumentSerif.className} text-white text-3xl sm:text-4xl md:text-5xl lg:text-6xl leading-relaxed mb-8 md:mb-12 mt-20`}
           >
             Read our whitepaper{" "}
             <Link
-              href="/whitepaper"
+              href="https://geton.dikeprotocol.xyz/waitlist"
               className="italic underline hover:text-white/80 transition-colors duration-300"
             >
               here
@@ -185,7 +185,7 @@ export default function LandingPage() {
             .
           </div>
           <div
-            className={`${instrumentSans.className} text-white/90 text-xl leading-relaxed mb-10 max-w-2xl`}
+            className={`${instrumentSans.className} text-white/90 text-base sm:text-lg md:text-xl leading-relaxed mb-8 md:mb-10 max-w-2xl`}
           >
             Be among the first to experience the future of prediction markets.
             <br />
@@ -193,8 +193,8 @@ export default function LandingPage() {
             launch.
           </div>
           <Link
-            href="/waitlist"
-            className={`${instrumentSerif.className} text-white text-3xl font-normal tracking-wide px-12 py-5 border border-white/30 hover:border-white/60 hover:bg-white/10 transition-all duration-300 rounded-sm`}
+            href="https://geton.dikeprotocol.xyz"
+            className={`${instrumentSerif.className} text-white text-xl sm:text-2xl md:text-3xl font-normal tracking-wide px-6 sm:px-8 md:px-12 py-3 sm:py-4 md:py-5 border border-white/30 hover:border-white/60 hover:bg-white/10 transition-all duration-300 rounded-sm`}
           >
             Join the Waitlist
           </Link>
@@ -209,7 +209,7 @@ export default function LandingPage() {
 
           {/* Footer content */}
           <div
-            className={`${instrumentSans.className} flex items-center justify-center gap-12 text-white/70 text-sm pb-6 px-8`}
+            className={`${instrumentSans.className} flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-white/70 text-sm pb-6 px-6 md:px-8`}
           >
             <Link
               href="/"
@@ -236,7 +236,7 @@ export default function LandingPage() {
               Dashboard
             </Link>
             <Link
-              href="/whitepaper"
+              href="https://geton.dikeprotocol.xyz/waitlist"
               className="hover:text-white/90 transition-colors duration-300"
             >
               Whitepaper

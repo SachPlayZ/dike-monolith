@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Instrument_Sans, Instrument_Serif } from "next/font/google";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Menu, X } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { WalletButton } from "@/components/WalletButton";
 
@@ -20,7 +20,9 @@ const instrumentSans = Instrument_Sans({
 
 export default function LandingNavbar() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -30,17 +32,30 @@ export default function LandingNavbar() {
       ) {
         setIsDropdownOpen(false);
       }
+      if (
+        mobileMenuRef.current &&
+        !mobileMenuRef.current.contains(event.target as Node)
+      ) {
+        setIsMobileMenuOpen(false);
+      }
     }
-    if (isDropdownOpen)
+    if (isDropdownOpen || isMobileMenuOpen)
       document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isDropdownOpen]);
+  }, [isDropdownOpen, isMobileMenuOpen]);
 
   return (
-    <nav className="absolute top-0 left-0 right-0 z-50 flex items-center py-4 px-8">
-      <div
-        className={`${instrumentSans.className} absolute left-1/2 -translate-x-1/2 flex items-center gap-12 text-white`}
+    <nav
+      className={`${instrumentSans.className} absolute top-0 left-0 right-0 z-50 flex items-center justify-between py-4 px-6 md:px-8`}
+    >
+      <Link
+        href="/"
+        className={`${instrumentSerif.className} md:hidden relative text-3xl font-normal tracking-wide text-white transition-colors duration-300 hover:text-white/80`}
       >
+        DIKE
+      </Link>
+
+      <div className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center gap-12 text-white">
         <Link
           href="/predictions"
           className="relative text-base font-normal tracking-wide transition-colors duration-300 hover:text-white/80 group"
@@ -99,9 +114,52 @@ export default function LandingNavbar() {
         </Link>
       </div>
 
-      <div className={`${instrumentSans.className} ml-auto flex items-center`}>
-        <WalletButton className="relative flex items-center gap-2 px-4 py-2 text-base font-normal tracking-wide text-white transition-all duration-300 hover:text-white/80 border border-white/20 hover:border-white/40 rounded-sm backdrop-blur-sm bg-white/5 hover:bg-white/10" />
+      <div className="flex items-center gap-3">
+        <WalletButton className="relative flex items-center gap-2 px-3 py-2 md:px-4 text-sm md:text-base font-normal tracking-wide text-white transition-all duration-300 hover:text-white/80 border border-white/20 hover:border-white/40 rounded-sm backdrop-blur-sm bg-white/5 hover:bg-white/10" />
+        <button
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className="md:hidden flex items-center justify-center w-10 h-10 text-white border border-white/20 rounded-sm bg-white/5 hover:bg-white/10 transition-colors duration-300"
+          aria-label="Toggle menu"
+        >
+          {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </button>
       </div>
+
+      {isMobileMenuOpen && (
+        <div
+          ref={mobileMenuRef}
+          className="md:hidden absolute top-full left-0 right-0 flex flex-col items-center gap-1 py-4 bg-black/90 backdrop-blur-md border-t border-white/10"
+        >
+          <Link
+            href="/predictions"
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="w-full text-center py-3 text-base text-white tracking-wide hover:bg-white/10 transition-colors duration-300"
+          >
+            predictions
+          </Link>
+          <Link
+            href="/dashboard"
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="w-full text-center py-3 text-base text-white tracking-wide hover:bg-white/10 transition-colors duration-300"
+          >
+            dashboard
+          </Link>
+          <Link
+            href="/create-predic"
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="w-full text-center py-3 text-base text-white tracking-wide hover:bg-white/10 transition-colors duration-300"
+          >
+            create
+          </Link>
+          <Link
+            href="/profile"
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="w-full text-center py-3 text-base text-white tracking-wide hover:bg-white/10 transition-colors duration-300"
+          >
+            profile
+          </Link>
+        </div>
+      )}
     </nav>
   );
 }

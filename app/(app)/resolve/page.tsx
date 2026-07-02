@@ -61,7 +61,7 @@ async function ResolutionWorkbench() {
         return (
           <Card key={market.marketId} size="sm">
             <CardContent className="space-y-4">
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <p className="text-sm font-medium">{market.config.question}</p>
                 <MarketStatusBadge status={market.status} />
               </div>

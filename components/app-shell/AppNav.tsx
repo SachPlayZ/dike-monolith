@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState, useEffect, useRef } from "react";
+import { Menu, X } from "lucide-react";
 import { useWallet } from "@/lib/contexts/wallet";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -21,6 +23,26 @@ export function AppNav() {
   const visibleLinks = NAV_LINKS.filter(
     (link) => !link.permission || Boolean(permissions?.[link.permission])
   );
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        mobileMenuRef.current &&
+        !mobileMenuRef.current.contains(event.target as Node)
+      ) {
+        setIsMobileMenuOpen(false);
+      }
+    }
+    if (isMobileMenuOpen)
+      document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isMobileMenuOpen]);
+
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [pathname]);
 
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-background/80 backdrop-blur-md">
@@ -60,8 +82,37 @@ export function AppNav() {
               {isConnecting ? "Connecting…" : "Connect"}
             </Button>
           )}
+          <button
+            onClick={() => setIsMobileMenuOpen((open) => !open)}
+            className="md:hidden flex items-center justify-center w-9 h-9 text-foreground border border-white/10 rounded-sm hover:bg-white/5 transition-colors"
+            aria-label="Toggle menu"
+          >
+            {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
         </div>
       </div>
+
+      {isMobileMenuOpen && (
+        <div
+          ref={mobileMenuRef}
+          className="md:hidden flex flex-col border-t border-white/10 bg-background/95 backdrop-blur-md"
+        >
+          {visibleLinks.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={cn(
+                "px-4 py-3 text-sm tracking-wide text-center transition-colors duration-300 hover:bg-white/5",
+                pathname.startsWith(link.href)
+                  ? "text-foreground"
+                  : "text-foreground/50"
+              )}
+            >
+              {link.label}
+            </Link>
+          ))}
+        </div>
+      )}
     </header>
   );
 }

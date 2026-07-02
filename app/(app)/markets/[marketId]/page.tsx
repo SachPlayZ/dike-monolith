@@ -144,7 +144,7 @@ async function MarketDetailContent({ marketId }: { marketId: string }) {
               </div>
 
               {/* Reserve amounts */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="px-4 py-3 rounded-xl bg-emerald-500/[0.06] border border-emerald-500/[0.12]">
                   <p className="text-[10px] uppercase tracking-[0.12em] text-emerald-600/60 dark:text-emerald-400/50 mb-1">YES Reserve</p>
                   <p className="text-sm font-semibold font-mono text-emerald-400">

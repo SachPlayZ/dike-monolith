@@ -42,9 +42,11 @@ export function toBytes(hex: string): StellarSdk.xdr.ScVal {
   return StellarSdk.nativeToScVal(buf, { type: "bytes" });
 }
 
-// Soroban unit-variant enums encode as Symbol
+// Soroban unit-variant enums encode as a vec containing the variant Symbol,
+// not a bare Symbol (confirmed against deployed contract: bare symbol traps
+// with WasmVm/InvalidAction on every Outcome-typed call).
 export function toOutcome(outcome: Outcome): StellarSdk.xdr.ScVal {
-  return toSymbol(outcome);
+  return StellarSdk.xdr.ScVal.scvVec([StellarSdk.nativeToScVal(outcome, { type: "symbol" })]);
 }
 
 // Decode helpers

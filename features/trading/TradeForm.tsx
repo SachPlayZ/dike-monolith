@@ -54,8 +54,27 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
     ]).then(([yes, no]) => setBalances({ yes, no }));
   }, [address, marketId, txState.status]);
 
+  const sellBalance = balances ? BigInt(balances[token]) : null;
+  const noPosition = side === "sell" && (sellBalance === null || sellBalance === 0n);
+  const exceedsPosition =
+    side === "sell" &&
+    sellBalance !== null &&
+    amountInput.length > 0 &&
+    (() => {
+      try {
+        return parseUsdc(amountInput) > sellBalance;
+      } catch {
+        return false;
+      }
+    })();
+
   useEffect(() => {
     if (!address || !amountInput || parseFloat(amountInput) <= 0) {
+      setQuote(null);
+      setSimulatedFee(null);
+      return;
+    }
+    if (side === "sell" && (noPosition || exceedsPosition)) {
       setQuote(null);
       setSimulatedFee(null);
       return;
@@ -84,7 +103,7 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [address, amountInput, side, token, poolId]);
+  }, [address, amountInput, side, token, poolId, noPosition, exceedsPosition]);
 
   async function handleTrade() {
     if (!address || !amountInput || !quote) return;
@@ -132,7 +151,7 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
   }
 
   const isExecuting = isPending || quoting;
-  const canTrade = Boolean(quote && amountInput && !isExecuting);
+  const canTrade = Boolean(quote && amountInput && !isExecuting && !noPosition && !exceedsPosition);
 
   return (
     <div className="rounded-2xl bg-white/[0.03] border border-white/[0.07] overflow-hidden">
@@ -210,12 +229,23 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
               placeholder="0"
               value={amountInput}
               onChange={(e) => setAmountInput(e.target.value)}
-              className="flex-1 bg-transparent text-2xl font-semibold text-white placeholder-white/15 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none w-full min-w-0"
+              disabled={noPosition}
+              className="flex-1 bg-transparent text-2xl font-semibold text-white placeholder-white/15 outline-none disabled:cursor-not-allowed disabled:opacity-40 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none w-full min-w-0"
             />
             <span className="text-sm text-white/30 shrink-0">{side === "sell" ? token.toUpperCase() : "USDC"}</span>
           </div>
           {quoting && (
             <p className="text-[10px] text-white/30 mt-1.5 animate-pulse">Fetching quote…</p>
+          )}
+          {noPosition && (
+            <p className="text-[10px] text-amber-300 mt-1.5">
+              You don&apos;t hold any {token.toUpperCase()} position in this market.
+            </p>
+          )}
+          {!noPosition && exceedsPosition && (
+            <p className="text-[10px] text-amber-300 mt-1.5">
+              Amount exceeds your {token.toUpperCase()} position ({formatUsdc(sellBalance ?? 0n)}).
+            </p>
           )}
         </div>
 
@@ -248,6 +278,10 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
             ? "Processing…"
             : quoting
             ? "Quoting…"
+            : noPosition
+            ? "No position to sell"
+            : exceedsPosition
+            ? "Exceeds your position"
             : canTrade
             ? `${side === "buy" ? "Buy" : "Sell"} ${token.toUpperCase()}`
             : "Enter amount"}
