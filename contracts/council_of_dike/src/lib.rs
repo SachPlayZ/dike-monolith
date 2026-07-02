@@ -525,6 +525,49 @@ impl CouncilOfDike {
         Ok((correct, payout))
     }
 
+    pub fn sweep_case_reward(
+        env: Env,
+        case_id: u64,
+        recipient: Address,
+    ) -> Result<i128, DikeError> {
+        require_role(&env, symbol_short!("gov"))?;
+        let case_data = read_case(&env, case_id)?;
+        if !case_data.has_final_outcome {
+            return Err(DikeError::InvalidStatus);
+        }
+
+        let correct_votes = match case_data.final_outcome {
+            Outcome::Yes => case_data.yes_votes,
+            Outcome::No => case_data.no_votes,
+            Outcome::Invalid => case_data.invalid_votes,
+        } as i128;
+        if correct_votes > 0 {
+            return Err(DikeError::InvalidStatus);
+        }
+
+        let reward_key = DataKey::CaseRewardPool(case_id);
+        let reward_pool: i128 = env.storage().persistent().get(&reward_key).unwrap_or(0);
+        if reward_pool <= 0 {
+            return Err(DikeError::InvalidAmount);
+        }
+
+        let token: Address = env
+            .storage()
+            .persistent()
+            .get(&DataKey::CaseToken(case_id))
+            .ok_or(DikeError::NotInitialized)?;
+        TokenClient::new(&env, &token).transfer(
+            &env.current_contract_address(),
+            &recipient,
+            &reward_pool,
+        );
+        env.storage().persistent().set(&reward_key, &0i128);
+        env.storage()
+            .persistent()
+            .extend_ttl(&reward_key, MIN_TTL, EXTEND_TTL);
+        Ok(reward_pool)
+    }
+
     pub fn case(env: Env, case_id: u64) -> Result<CouncilCase, DikeError> {
         read_case(&env, case_id)
     }
@@ -558,6 +601,13 @@ impl CouncilOfDike {
         salt: BytesN<32>,
     ) -> BytesN<32> {
         vote_commitment_hash(&env, case_id, voter, outcome, salt)
+    }
+
+    pub fn is_member(env: Env, member: Address) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::Member(member))
+            .unwrap_or(false)
     }
 }
 

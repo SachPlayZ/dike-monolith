@@ -177,15 +177,20 @@ impl MockUSDC {
         if current < amount {
             return Err(DikeError::InsufficientBalance);
         }
-        write_balance(&env, from.clone(), current - amount);
+        write_balance(
+            &env,
+            from.clone(),
+            current.checked_sub(amount).ok_or(DikeError::ArithmeticError)?,
+        );
         let supply: i128 = env
             .storage()
             .instance()
             .get(&DataKey::TotalSupply)
             .unwrap_or(0);
-        env.storage()
-            .instance()
-            .set(&DataKey::TotalSupply, &(supply - amount));
+        env.storage().instance().set(
+            &DataKey::TotalSupply,
+            &supply.checked_sub(amount).ok_or(DikeError::ArithmeticError)?,
+        );
         Burned { from, amount }.publish(&env);
         Ok(())
     }
@@ -200,7 +205,13 @@ impl MockUSDC {
             return Err(DikeError::InsufficientBalance);
         }
         let to_balance = read_balance(&env, to.clone());
-        write_balance(&env, from.clone(), from_balance - amount);
+        write_balance(
+            &env,
+            from.clone(),
+            from_balance
+                .checked_sub(amount)
+                .ok_or(DikeError::ArithmeticError)?,
+        );
         write_balance(
             &env,
             to.clone(),
@@ -223,6 +234,7 @@ impl MockUSDC {
         if amount < 0 {
             return Err(DikeError::InvalidAmount);
         }
+        // The mock ignores expiration semantics and just stores the allowance amount.
         let key = DataKey::Allowance(from.clone(), spender.clone());
         env.storage().persistent().set(&key, &amount);
         env.storage()
@@ -269,8 +281,19 @@ impl MockUSDC {
             return Err(DikeError::InsufficientBalance);
         }
         let to_balance = read_balance(&env, to.clone());
-        env.storage().persistent().set(&key, &(allowance - amount));
-        write_balance(&env, from.clone(), from_balance - amount);
+        env.storage().persistent().set(
+            &key,
+            &allowance
+                .checked_sub(amount)
+                .ok_or(DikeError::ArithmeticError)?,
+        );
+        write_balance(
+            &env,
+            from.clone(),
+            from_balance
+                .checked_sub(amount)
+                .ok_or(DikeError::ArithmeticError)?,
+        );
         write_balance(
             &env,
             to.clone(),

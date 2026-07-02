@@ -3,7 +3,7 @@
 use super::*;
 use collateral_vault::{CollateralVault, CollateralVaultClient};
 use council_of_dike::{CouncilOfDike, CouncilOfDikeClient};
-use dike_types::{FeeConfig, MarketConfig, MarketStatus};
+use dike_types::{FeeConfig, MarketConfig, MarketStatus, OracleStatus};
 use fee_manager::FeeManager;
 use market_registry::{DikeMarketRegistry, DikeMarketRegistryClient};
 use soroban_sdk::{
@@ -167,6 +167,26 @@ fn oversized_dispute_window_rejected_before_bond_lock() {
 }
 
 #[test]
+fn invalid_request_input_does_not_close_trading() {
+    let h = setup();
+    let oracle = CODOracleClient::new(&h.env, &h.oracle_id);
+    let registry = DikeMarketRegistryClient::new(&h.env, &h.registry_id);
+
+    assert!(matches!(
+        oracle.try_request_resolution(
+            &1,
+            &BytesN::from_array(&h.env, &[1; 32]),
+            &String::from_str(&h.env, ""),
+            &999,
+            &500,
+            &100,
+        ),
+        Err(Ok(DikeError::InvalidInput))
+    ));
+    assert_eq!(registry.get_status(&1), MarketStatus::Live);
+}
+
+#[test]
 fn dispute_escalates_to_council_and_registry_resolution() {
     let h = setup();
     let oracle = CODOracleClient::new(&h.env, &h.oracle_id);
@@ -297,4 +317,108 @@ fn council_win_splits_losing_bond_winner_council_treasury() {
     assert!(correct);
     assert_eq!(payout, 150);
     assert_eq!(TokenClient::new(&h.env, &h.token).balance(&member), 150);
+}
+
+// --- Item H-2: mid-sequence bond-distribution revert proof ---
+
+/// Forces a failure AFTER the first vault call in report_council_outcome succeeds
+/// (release_bond for the proposer), so we can verify Soroban's transaction-level
+/// atomicity reverts that first call along with everything else.
+///
+/// Setup: drain the disputer's bond directly before calling report_council_outcome
+/// in the outcome==proposed_outcome branch.  The sequence inside the function is:
+///   1. release_bond(proposer, false)            ← succeeds (proposal_bonds: 500→0 temporarily)
+///   2. slash_bond(disputer, winner_amt, true, …) ← FAILS (disputer bond = 0)
+///   → trap propagates → Soroban reverts entire tx → proposal_bonds restored to 500.
+#[test]
+fn bond_distribution_failure_mid_sequence_reverts_all() {
+    let h = setup();
+    let gov = Address::generate(&h.env);
+    let treasury = Address::generate(&h.env);
+    let fee_manager_id = h.env.register(
+        FeeManager,
+        (&Address::generate(&h.env), &gov, &500i128, &100u32),
+    );
+    let oracle = CODOracleClient::new(&h.env, &h.oracle_id);
+    let vault = CollateralVaultClient::new(&h.env, &h.vault_id);
+    oracle.set_role(&symbol_short!("fees"), &fee_manager_id);
+    oracle.set_role(&symbol_short!("treas"), &treasury);
+
+    // Full flow: request → propose → dispute → escalate
+    let request_id = oracle.request_resolution(
+        &1,
+        &BytesN::from_array(&h.env, &[1; 32]),
+        &String::from_str(&h.env, "ipfs://rules"),
+        &999,
+        &500,
+        &100,
+    );
+    oracle.propose_outcome(
+        &h.proposer,
+        &request_id,
+        &Outcome::Yes,
+        &String::from_str(&h.env, "ipfs://yes"),
+    );
+    oracle.dispute_outcome(
+        &h.disputer,
+        &request_id,
+        &Outcome::No,
+        &String::from_str(&h.env, "ipfs://no"),
+    );
+    oracle.escalate_to_council(&request_id);
+
+    assert_eq!(vault.accounting(&1).proposal_bonds, 500);
+    assert_eq!(vault.accounting(&1).dispute_bonds, 500);
+    assert_eq!(oracle.request(&request_id).status, OracleStatus::Escalated);
+
+    // Drain the disputer's dispute bond directly (oracle role bypasses auth via
+    // mock_all_auths).  This leaves dispute_bonds=0 and the disputer bond key
+    // at zero, so the subsequent slash_bond call inside report_council_outcome
+    // will fail with InsufficientBalance.
+    vault.release_bond(&h.token, &h.disputer, &request_id, &500, &true);
+    assert_eq!(vault.accounting(&1).dispute_bonds, 0);
+
+    // outcome == proposed_outcome branch:
+    //   step 1: release_bond(proposer) succeeds
+    //   step 2: slash_bond(disputer, winner_amt) FAILS → trap → tx reverts step 1
+    assert!(oracle
+        .try_report_council_outcome(&request_id, &Outcome::Yes)
+        .is_err());
+
+    // Proposal bonds restored (step 1 was reverted).
+    assert_eq!(vault.accounting(&1).proposal_bonds, 500);
+    // Request still Escalated — the status write was reverted too.
+    assert_eq!(oracle.request(&request_id).status, OracleStatus::Escalated);
+}
+
+// --- Item 2: unauthorized-caller negative-auth tests ---
+
+#[test]
+fn role_gated_fns_reject_unconfigured_role() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CODOracle, (&admin,));
+    let client = CODOracleClient::new(&env, &id);
+    // gov role not configured → pause returns Unauthorized
+    assert!(matches!(
+        client.try_pause(&true),
+        Err(Ok(DikeError::Unauthorized))
+    ));
+    // council role not configured → report_council_outcome returns Unauthorized
+    assert!(matches!(
+        client.try_report_council_outcome(&1, &Outcome::Yes),
+        Err(Ok(DikeError::Unauthorized))
+    ));
+}
+
+#[test]
+fn admin_gated_fns_reject_wrong_signer() {
+    let env = Env::default(); // no mock_all_auths — require_auth panics
+    let admin = Address::generate(&env);
+    let id = env.register(CODOracle, (&admin,));
+    let client = CODOracleClient::new(&env, &id);
+    let other = Address::generate(&env);
+    assert!(client.try_set_admin(&other).is_err());
+    assert!(client.try_set_role(&symbol_short!("gov"), &other).is_err());
 }

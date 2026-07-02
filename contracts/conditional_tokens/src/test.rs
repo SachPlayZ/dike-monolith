@@ -46,3 +46,47 @@ fn split_merge_and_transfer_positions() {
     assert_eq!(client.balance(&alice, &1, &Outcome::No), 80);
     assert_eq!(client.backing(&1), 80);
 }
+
+// --- Item 2: unauthorized-caller negative-auth tests ---
+
+#[test]
+fn role_gated_fns_reject_unconfigured_role() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(DikeConditionalTokens, (&admin,));
+    let client = DikeConditionalTokensClient::new(&env, &id);
+    let user = Address::generate(&env);
+    // amm role not configured
+    assert!(matches!(
+        client.try_mint_complete_set(&user, &1, &100),
+        Err(Ok(DikeError::Unauthorized))
+    ));
+    assert!(matches!(
+        client.try_merge_positions(&user, &1, &100),
+        Err(Ok(DikeError::Unauthorized))
+    ));
+    // vault role not configured
+    assert!(matches!(
+        client.try_split_position(&user, &1, &100),
+        Err(Ok(DikeError::Unauthorized))
+    ));
+    assert!(matches!(
+        client.try_burn_for_redeem(&user, &1, &Outcome::Yes, &100),
+        Err(Ok(DikeError::Unauthorized))
+    ));
+}
+
+#[test]
+fn admin_gated_fns_reject_wrong_signer() {
+    let env = Env::default(); // no mock_all_auths
+    let admin = Address::generate(&env);
+    let id = env.register(DikeConditionalTokens, (&admin,));
+    let client = DikeConditionalTokensClient::new(&env, &id);
+    let other = Address::generate(&env);
+    assert!(client.try_set_admin(&other).is_err());
+    assert!(client
+        .try_set_role(&symbol_short!("amm"), &other)
+        .is_err());
+    assert!(client.try_pause(&true).is_err());
+}

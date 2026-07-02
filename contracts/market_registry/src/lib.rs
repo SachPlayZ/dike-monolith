@@ -1,6 +1,6 @@
 #![no_std]
 
-use dike_types::{DikeError, FeeConfig, MarketConfig, MarketData, MarketStatus, Outcome};
+use dike_types::{validate_fee_config, DikeError, FeeConfig, MarketConfig, MarketData, MarketStatus, Outcome};
 use soroban_sdk::{
     contract, contractevent, contractimpl, contracttype, symbol_short, Address, Env, Symbol,
 };
@@ -142,6 +142,7 @@ fn valid_transition(from: MarketStatus, to: MarketStatus) -> bool {
             | (MarketStatus::Live, MarketStatus::Paused)
             | (MarketStatus::Paused, MarketStatus::Live)
             | (MarketStatus::Live, MarketStatus::TradingClosed)
+            | (MarketStatus::Paused, MarketStatus::TradingClosed)
             | (
                 MarketStatus::TradingClosed,
                 MarketStatus::ResolutionRequested
@@ -174,19 +175,6 @@ fn validate_config(env: &Env, config: &MarketConfig) -> Result<(), DikeError> {
         .unwrap_or(false);
     if !supported {
         return Err(DikeError::UnsupportedCollateral);
-    }
-    Ok(())
-}
-
-fn validate_fee_config(config: &FeeConfig) -> Result<(), DikeError> {
-    let share_total = config.lp_fee_share_bps as u64
-        + config.treasury_fee_share_bps as u64
-        + config.cod_fee_share_bps as u64;
-    if share_total != 10_000 || config.trading_fee_bps > 1_000 {
-        return Err(DikeError::InvalidInput);
-    }
-    if config.council_reward < 0 || config.creation_fee < 0 {
-        return Err(DikeError::InvalidAmount);
     }
     Ok(())
 }
@@ -444,6 +432,20 @@ impl DikeMarketRegistry {
             return Err(DikeError::InvalidStatus);
         }
         Ok(market.final_outcome)
+    }
+
+    pub fn is_supported_collateral(env: Env, collateral: Address) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::SupportedCollateral(collateral))
+            .unwrap_or(false)
+    }
+
+    pub fn role(env: Env, role: Symbol) -> Result<Address, DikeError> {
+        env.storage()
+            .instance()
+            .get(&DataKey::Role(role))
+            .ok_or(DikeError::Unauthorized)
     }
 }
 

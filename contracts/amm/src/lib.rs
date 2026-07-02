@@ -5,7 +5,7 @@ use dike_math::{
     average_price_bps, bps, checked_add, checked_div, checked_mul, checked_sub, proportional,
     quote_buy_complete_set, quote_sell, split_fee,
 };
-use dike_types::{DikeError, FeeConfig, MarketData, MarketStatus, Outcome, PoolData, TradeQuote};
+use dike_types::{validate_fee_config, DikeError, FeeConfig, MarketData, MarketStatus, Outcome, PoolData, TradeQuote};
 use soroban_sdk::{
     contract, contractclient, contractevent, contractimpl, contracttype, symbol_short, Address,
     Env, Symbol,
@@ -300,19 +300,6 @@ fn write_fee(env: &Env, pool_id: u64, fee: &FeeConfig) {
         .extend_ttl(&key, MIN_TTL, EXTEND_TTL);
 }
 
-fn validate_fee_config(config: &FeeConfig) -> Result<(), DikeError> {
-    let share_total = config.lp_fee_share_bps as u64
-        + config.treasury_fee_share_bps as u64
-        + config.cod_fee_share_bps as u64;
-    if share_total != 10_000 || config.trading_fee_bps > 1_000 {
-        return Err(DikeError::InvalidInput);
-    }
-    if config.council_reward < 0 || config.creation_fee < 0 {
-        return Err(DikeError::InvalidAmount);
-    }
-    Ok(())
-}
-
 fn require_live(env: &Env, pool: &PoolData, deadline: u64) -> Result<(), DikeError> {
     let paused: bool = env
         .storage()
@@ -475,6 +462,34 @@ fn quote_buy_side(
         net_in,
         amount_out,
         average_price_bps: average_price_bps(amount_in, amount_out)?,
+    })
+}
+
+fn quote_sell_side(
+    env: Env,
+    pool_id: u64,
+    amount_in: i128,
+    yes: bool,
+) -> Result<TradeQuote, DikeError> {
+    if amount_in <= 0 {
+        return Err(DikeError::InvalidAmount);
+    }
+    let pool = read_pool(&env, pool_id)?;
+    let fee_config = read_fee(&env, pool_id);
+    let gross_out = if yes {
+        quote_sell(pool.yes_reserve, pool.no_reserve, amount_in)?
+    } else {
+        quote_sell(pool.no_reserve, pool.yes_reserve, amount_in)?
+    };
+    let (fee, net_in) = split_fee(gross_out, fee_config.trading_fee_bps)?;
+    Ok(TradeQuote {
+        amount_in,
+        fee,
+        net_in,
+        amount_out: net_in,
+        // Collateral-per-token, matching quote_buy_side's convention
+        // (average_price_bps(collateral, tokens)) — not tokens-per-collateral.
+        average_price_bps: average_price_bps(net_in, amount_in)?,
     })
 }
 
@@ -1005,6 +1020,22 @@ impl DikeAMM {
 
     pub fn quote_buy_no(env: Env, pool_id: u64, amount_in: i128) -> Result<TradeQuote, DikeError> {
         quote_buy_side(env, pool_id, amount_in, false)
+    }
+
+    pub fn quote_sell_yes(
+        env: Env,
+        pool_id: u64,
+        amount_in: i128,
+    ) -> Result<TradeQuote, DikeError> {
+        quote_sell_side(env, pool_id, amount_in, true)
+    }
+
+    pub fn quote_sell_no(
+        env: Env,
+        pool_id: u64,
+        amount_in: i128,
+    ) -> Result<TradeQuote, DikeError> {
+        quote_sell_side(env, pool_id, amount_in, false)
     }
 
     pub fn pool(env: Env, pool_id: u64) -> Result<PoolData, DikeError> {

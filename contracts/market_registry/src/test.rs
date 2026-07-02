@@ -111,3 +111,104 @@ fn generic_status_cannot_resolve_without_final_outcome() {
     assert!(market.has_final_outcome);
     assert_eq!(client.get_final_outcome(&market_id), Outcome::Yes);
 }
+
+#[test]
+fn paused_markets_can_be_emergency_closed() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(1);
+    let admin = Address::generate(&env);
+    let factory = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    let gov = Address::generate(&env);
+    let collateral = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let id = env.register(DikeMarketRegistry, (&admin,));
+    let client = DikeMarketRegistryClient::new(&env, &id);
+    client.set_role(&symbol_short!("factory"), &factory);
+    client.set_role(&symbol_short!("oracle"), &oracle);
+    client.set_role(&symbol_short!("gov"), &gov);
+    client.set_supported_collateral(&collateral, &true);
+
+    let market_id = client.register_market(&cfg(&env, &creator, &collateral), &1, &2, &1);
+    client.activate_market(&market_id);
+    client.set_status(&market_id, &MarketStatus::Paused);
+    env.ledger().set_timestamp(10_001);
+    client.close_trading(&market_id);
+
+    assert_eq!(client.get_status(&market_id), MarketStatus::TradingClosed);
+}
+
+// --- Item 2: unauthorized-caller negative-auth tests ---
+
+#[test]
+fn role_gated_fns_reject_unconfigured_role() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(1);
+    let admin = Address::generate(&env);
+    let collateral = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let id = env.register(DikeMarketRegistry, (&admin,));
+    let client = DikeMarketRegistryClient::new(&env, &id);
+    // factory role not configured
+    assert!(matches!(
+        client.try_register_market(&cfg(&env, &creator, &collateral), &1, &2, &1),
+        Err(Ok(DikeError::Unauthorized))
+    ));
+    assert!(matches!(
+        client.try_activate_market(&1),
+        Err(Ok(DikeError::Unauthorized))
+    ));
+    // gov role not configured
+    assert!(matches!(
+        client.try_set_fee_config(&1, &FeeConfig::default()),
+        Err(Ok(DikeError::Unauthorized))
+    ));
+    assert!(matches!(
+        client.try_set_status(&1, &MarketStatus::Live),
+        Err(Ok(DikeError::Unauthorized))
+    ));
+    assert!(matches!(
+        client.try_cancel_market(&1),
+        Err(Ok(DikeError::Unauthorized))
+    ));
+    // oracle role not configured
+    assert!(matches!(
+        client.try_mark_resolution_requested(&1, &1),
+        Err(Ok(DikeError::Unauthorized))
+    ));
+    assert!(matches!(
+        client.try_mark_proposed(&1),
+        Err(Ok(DikeError::Unauthorized))
+    ));
+    assert!(matches!(
+        client.try_mark_disputed(&1),
+        Err(Ok(DikeError::Unauthorized))
+    ));
+    assert!(matches!(
+        client.try_mark_council_voting(&1),
+        Err(Ok(DikeError::Unauthorized))
+    ));
+    assert!(matches!(
+        client.try_set_final_outcome(&1, &Outcome::Yes),
+        Err(Ok(DikeError::Unauthorized))
+    ));
+}
+
+#[test]
+fn admin_gated_fns_reject_wrong_signer() {
+    let env = Env::default(); // no mock_all_auths
+    let admin = Address::generate(&env);
+    let id = env.register(DikeMarketRegistry, (&admin,));
+    let client = DikeMarketRegistryClient::new(&env, &id);
+    let other = Address::generate(&env);
+    assert!(client.try_set_admin(&other).is_err());
+    assert!(client
+        .try_set_role(&symbol_short!("factory"), &other)
+        .is_err());
+    assert!(client
+        .try_set_supported_collateral(&other, &true)
+        .is_err());
+    assert!(client.try_pause_system(&true).is_err());
+}
