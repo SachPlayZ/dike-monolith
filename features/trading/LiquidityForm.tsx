@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useWallet } from "@/lib/contexts/wallet";
 import {
@@ -23,6 +24,7 @@ interface LiquidityFormProps {
 }
 
 export function LiquidityForm({ poolId }: LiquidityFormProps) {
+  const router = useRouter();
   const { address, isConnected, connect, sign } = useWallet();
   const [expanded, setExpanded] = useState(false);
   const [mode, setMode] = useState<Mode>("add");
@@ -100,6 +102,7 @@ export function LiquidityForm({ poolId }: LiquidityFormProps) {
         const result = await submitAndPoll(signedXdr);
         setTxState({ status: "success", hash: result.hash, error: null });
         refreshLpState();
+        router.refresh();
       } catch (e) {
         setTxState({ status: "failed", hash: null, error: parseDikeError(e) });
       }
@@ -124,6 +127,7 @@ export function LiquidityForm({ poolId }: LiquidityFormProps) {
         setTxState({ status: "success", hash: result.hash, error: null });
         setAmountInput("");
         refreshLpState();
+        router.refresh();
       } catch (e) {
         setTxState({ status: "failed", hash: null, error: parseDikeError(e) });
       }

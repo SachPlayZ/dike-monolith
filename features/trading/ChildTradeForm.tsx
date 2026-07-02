@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useWallet } from "@/lib/contexts/wallet";
 import {
@@ -29,6 +30,7 @@ const TRADE_DEADLINE_SECS = 300;
 type ChildToken = "yes" | "no";
 
 export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps) {
+  const router = useRouter();
   const { address, isConnected, connect, sign } = useWallet();
   const [expanded, setExpanded] = useState(false);
   const [markets, setMarkets] = useState<MarketData[]>([]);
@@ -149,6 +151,7 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
         setAmountInput("");
         setQuote(null);
         setAvailableCredit(null);
+        router.refresh();
       } catch (e) {
         const code = parseDikeError(e);
         const message =

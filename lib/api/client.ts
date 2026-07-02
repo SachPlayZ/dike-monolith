@@ -15,7 +15,9 @@ export async function apiGet<T>(path: string): Promise<T> {
   const url = `${SERVICES_URL}${path}`;
   let res: Response;
   try {
-    res = await fetch(url, { next: { revalidate: 30 } });
+    // Matches dike-services' INDEXER_POLL_INTERVAL_MS (5s) — no point caching
+    // longer than the data can actually change underneath us.
+    res = await fetch(url, { next: { revalidate: 5 } });
   } catch {
     throw new ServiceUnavailableError(path);
   }

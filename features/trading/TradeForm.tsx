@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useWallet } from "@/lib/contexts/wallet";
 import {
@@ -32,6 +33,7 @@ const DEFAULT_SLIPPAGE_BPS = 50;
 const TRADE_DEADLINE_SECS = 300;
 
 export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) {
+  const router = useRouter();
   const { address, isConnected, connect, sign } = useWallet();
   const [side, setSide] = useState<Side>("buy");
   const [token, setToken] = useState<Token>("yes");
@@ -42,20 +44,37 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
   const [txState, setTxState] = useState<TxState>({ status: "idle", hash: null, error: null });
   const [isPending, startTransition] = useTransition();
   const [balances, setBalances] = useState<{ yes: string; no: string } | null>(null);
+  const [balancesError, setBalancesError] = useState(false);
+  const [balancesRetryNonce, setBalancesRetryNonce] = useState(0);
 
   useEffect(() => {
     if (!address) {
       setBalances(null);
+      setBalancesError(false);
       return;
     }
-    Promise.all([
-      ctBalance(address, address, marketId, "Yes").catch(() => "0"),
-      ctBalance(address, address, marketId, "No").catch(() => "0"),
-    ]).then(([yes, no]) => setBalances({ yes, no }));
-  }, [address, marketId, txState.status]);
+    let cancelled = false;
+    Promise.allSettled([
+      ctBalance(address, address, marketId, "Yes"),
+      ctBalance(address, address, marketId, "No"),
+    ]).then(([yesRes, noRes]) => {
+      if (cancelled) return;
+      if (yesRes.status === "fulfilled" && noRes.status === "fulfilled") {
+        setBalances({ yes: yesRes.value, no: noRes.value });
+        setBalancesError(false);
+      } else {
+        setBalancesError(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [address, marketId, txState.status, balancesRetryNonce]);
 
   const sellBalance = balances ? BigInt(balances[token]) : null;
-  const noPosition = side === "sell" && (sellBalance === null || sellBalance === 0n);
+  const balancesUnknown = side === "sell" && balancesError && sellBalance === null;
+  const noPosition =
+    side === "sell" && !balancesUnknown && (sellBalance === null || sellBalance === 0n);
   const exceedsPosition =
     side === "sell" &&
     sellBalance !== null &&
@@ -130,6 +149,7 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
         setTxState({ status: "success", hash: result.hash, error: null });
         setAmountInput("");
         setQuote(null);
+        router.refresh();
       } catch (e) {
         setTxState({ status: "failed", hash: null, error: parseDikeError(e) });
       }
@@ -151,7 +171,9 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
   }
 
   const isExecuting = isPending || quoting;
-  const canTrade = Boolean(quote && amountInput && !isExecuting && !noPosition && !exceedsPosition);
+  const canTrade = Boolean(
+    quote && amountInput && !isExecuting && !noPosition && !exceedsPosition && !balancesUnknown
+  );
 
   return (
     <div className="rounded-2xl bg-white/[0.03] border border-white/[0.07] overflow-hidden">
@@ -237,12 +259,24 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
           {quoting && (
             <p className="text-[10px] text-white/30 mt-1.5 animate-pulse">Fetching quote…</p>
           )}
-          {noPosition && (
+          {balancesUnknown && (
+            <p className="text-[10px] text-amber-300 mt-1.5 flex items-center gap-2">
+              Couldn&apos;t verify your position — network read failed.
+              <button
+                type="button"
+                onClick={() => setBalancesRetryNonce((n) => n + 1)}
+                className="underline hover:text-amber-200 transition-colors duration-200"
+              >
+                Retry
+              </button>
+            </p>
+          )}
+          {!balancesUnknown && noPosition && (
             <p className="text-[10px] text-amber-300 mt-1.5">
               You don&apos;t hold any {token.toUpperCase()} position in this market.
             </p>
           )}
-          {!noPosition && exceedsPosition && (
+          {!balancesUnknown && !noPosition && exceedsPosition && (
             <p className="text-[10px] text-amber-300 mt-1.5">
               Amount exceeds your {token.toUpperCase()} position ({formatUsdc(sellBalance ?? 0n)}).
             </p>
@@ -278,6 +312,8 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
             ? "Processing…"
             : quoting
             ? "Quoting…"
+            : balancesUnknown
+            ? "Couldn't verify position"
             : noPosition
             ? "No position to sell"
             : exceedsPosition

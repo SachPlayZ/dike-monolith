@@ -2,13 +2,21 @@
 
 import { useState, useEffect } from "react";
 import { useWallet } from "@/lib/contexts/wallet";
-import { ammGetLpBalance, ctBalance } from "@/lib/contracts/clients";
+import {
+  ammGetLpBalance,
+  ctBalance,
+  vaultGetRootStake,
+  vaultGetUserDeposit,
+} from "@/lib/contracts/clients";
 import { formatUsdc } from "@/lib/stellar/scval";
 
 interface PositionData {
   yesBalance: string;
   noBalance: string;
   lpShares: string;
+  rootStakeYes: string;
+  rootStakeNo: string;
+  deposit: string;
 }
 
 interface UserPositionPanelProps {
@@ -19,31 +27,64 @@ interface UserPositionPanelProps {
 export function UserPositionPanel({ marketId, poolId }: UserPositionPanelProps) {
   const { address, isConnected } = useWallet();
   const [position, setPosition] = useState<PositionData | null>(null);
+  const [hasFetchError, setHasFetchError] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
 
   useEffect(() => {
     if (!address) return;
-    Promise.all([
-      ctBalance(address, address, marketId, "Yes").catch(() => "0"),
-      ctBalance(address, address, marketId, "No").catch(() => "0"),
-      poolId ? ammGetLpBalance(address, address, poolId).catch(() => "0") : Promise.resolve("0"),
-    ])
-      .then(([yesBalance, noBalance, lpShares]) => {
-        setPosition({ yesBalance, noBalance, lpShares });
-      })
-      .catch(() => {});
-  }, [address, marketId, poolId]);
+    let cancelled = false;
+    Promise.allSettled([
+      ctBalance(address, address, marketId, "Yes"),
+      ctBalance(address, address, marketId, "No"),
+      poolId ? ammGetLpBalance(address, address, poolId) : Promise.resolve("0"),
+      vaultGetRootStake(address, address, marketId, "Yes"),
+      vaultGetRootStake(address, address, marketId, "No"),
+      vaultGetUserDeposit(address, address, marketId),
+    ]).then((results) => {
+      if (cancelled) return;
+      const failed = results.some((r) => r.status === "rejected");
+      setHasFetchError(failed);
+      const [yesBalance, noBalance, lpShares, rootStakeYes, rootStakeNo, deposit] = results.map(
+        (r) => (r.status === "fulfilled" ? r.value : "0")
+      );
+      setPosition({ yesBalance, noBalance, lpShares, rootStakeYes, rootStakeNo, deposit });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [address, marketId, poolId, retryNonce]);
 
   if (!isConnected || !position) return null;
 
   const hasPosition =
-    position.yesBalance !== "0" || position.noBalance !== "0" || position.lpShares !== "0";
-  if (!hasPosition) return null;
+    position.yesBalance !== "0" ||
+    position.noBalance !== "0" ||
+    position.lpShares !== "0" ||
+    position.rootStakeYes !== "0" ||
+    position.rootStakeNo !== "0" ||
+    position.deposit !== "0";
+  if (!hasPosition && !hasFetchError) return null;
 
   return (
     <div className="rounded-2xl bg-white/[0.03] border border-white/[0.07] overflow-hidden animate-in fade-in-0 slide-in-from-top-2 duration-300">
-      <div className="px-5 pt-4 pb-3 border-b border-white/[0.05]">
+      <div className="px-5 pt-4 pb-3 border-b border-white/[0.05] flex items-center justify-between gap-2">
         <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/30">Your Position</p>
+        {hasFetchError && (
+          <button
+            type="button"
+            onClick={() => setRetryNonce((n) => n + 1)}
+            className="text-[10px] font-semibold uppercase tracking-widest text-amber-300/80 hover:text-amber-300 transition-colors duration-200"
+          >
+            Some reads failed — Retry
+          </button>
+        )}
       </div>
+      {!hasPosition && hasFetchError && (
+        <p className="px-5 py-4 text-xs text-white/40">
+          Couldn&apos;t verify your position — network reads failed.
+        </p>
+      )}
+      {hasPosition && (
       <div className="px-5 py-4 flex flex-wrap gap-2">
         {position.yesBalance !== "0" && (
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/[0.08] border border-emerald-500/[0.15]">
@@ -72,7 +113,35 @@ export function UserPositionPanel({ marketId, poolId }: UserPositionPanelProps) 
             </span>
           </div>
         )}
+        {position.rootStakeYes !== "0" && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/[0.08] border border-emerald-500/[0.15]">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-emerald-400/70">YES STAKE</span>
+            <span className="text-sm font-semibold font-mono text-emerald-400">
+              {formatUsdc(BigInt(position.rootStakeYes))}
+            </span>
+          </div>
+        )}
+        {position.rootStakeNo !== "0" && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-rose-500/[0.08] border border-rose-500/[0.15]">
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-rose-400/70">NO STAKE</span>
+            <span className="text-sm font-semibold font-mono text-rose-400">
+              {formatUsdc(BigInt(position.rootStakeNo))}
+            </span>
+          </div>
+        )}
+        {position.deposit !== "0" && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08]">
+            <span className="w-1.5 h-1.5 rounded-full bg-white/40 shrink-0" />
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-white/40">DEPOSIT</span>
+            <span className="text-sm font-semibold font-mono text-white/70">
+              {formatUsdc(BigInt(position.deposit))}
+            </span>
+          </div>
+        )}
       </div>
+      )}
     </div>
   );
 }
