@@ -14,6 +14,20 @@ const DIKE_ERROR_MAP: Record<number, DikeErrorCode> = {
   35: "EncumberedPosition",
 };
 
+function decodeResultXdr(base64: string) {
+  try {
+    const result = StellarSdk.xdr.TransactionResult.fromXDR(base64, "base64");
+    const outerCode = result.result().switch().name;
+    const opResults = result.result().results();
+    const firstOpCode = opResults && opResults.length > 0
+      ? opResults[0].tr().switch().name
+      : null;
+    return firstOpCode ? `${outerCode} / ${firstOpCode}` : outerCode;
+  } catch {
+    return null;
+  }
+}
+
 export function parseDikeError(err: unknown): string {
   if (err instanceof Error) {
     const msg = err.message;
@@ -28,6 +42,22 @@ export function parseDikeError(err: unknown): string {
     for (const named of Object.values(DIKE_ERROR_MAP)) {
       if (msg.includes(named)) return named;
     }
+    const xdrMatch = msg.match(/(AAAA[A-Za-z0-9+/=]+)/);
+    if (xdrMatch) {
+      const decoded = decodeResultXdr(xdrMatch[1]);
+      if (decoded) {
+        return msg
+          .replace(xdrMatch[1], decoded)
+          .replace("Transaction rejected: ", "")
+          .replace("Transaction failed on-chain: ", "");
+      }
+      if (msg.startsWith("Transaction rejected:")) {
+        return "Transaction rejected by Stellar RPC";
+      }
+      if (msg.startsWith("Transaction failed on-chain:")) {
+        return "Transaction failed on-chain";
+      }
+    }
     return msg;
   }
   return String(err);
@@ -40,6 +70,24 @@ export function verifyNetwork(walletNetwork: string) {
       `Wrong network. Wallet is on "${walletNetwork}", expected "${expected}". Switch your wallet to Stellar Testnet.`
     );
   }
+}
+
+export function feeFromXdr(xdr: string): string {
+  const tx = StellarSdk.TransactionBuilder.fromXDR(
+    xdr,
+    networkConfig.networkPassphrase
+  ) as StellarSdk.Transaction;
+  return String(tx.fee);
+}
+
+export function formatFeeXlm(stroops: string | number | bigint): string {
+  const value = typeof stroops === "bigint" ? stroops : BigInt(stroops);
+  const whole = value / 10_000_000n;
+  const fraction = (value % 10_000_000n)
+    .toString()
+    .padStart(7, "0")
+    .replace(/0+$/, "");
+  return fraction.length > 0 ? `${whole}.${fraction} XLM` : `${whole} XLM`;
 }
 
 // Build + simulate a Soroban contract call. Returns assembled XDR ready for signing.

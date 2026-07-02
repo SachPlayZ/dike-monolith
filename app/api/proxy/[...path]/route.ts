@@ -13,6 +13,9 @@ export async function GET(
   context: { params: Promise<{ path: string[] }> },
 ) {
   const { path } = await context.params;
+  if (path[0] === "admin" || path[0] === "metrics") {
+    return NextResponse.json({ error: "protected path unavailable through public proxy" }, { status: 403 });
+  }
   const upstream = await fetch(joinUrl(path, request.nextUrl.search), {
     headers: {
       accept: request.headers.get("accept") ?? "application/json",

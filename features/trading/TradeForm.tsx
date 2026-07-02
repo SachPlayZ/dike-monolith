@@ -6,12 +6,14 @@ import { useWallet } from "@/lib/contexts/wallet";
 import {
   ammQuoteBuyYes,
   ammQuoteBuyNo,
+  ammQuoteSellYes,
+  ammQuoteSellNo,
   buildAmmBuyYes,
   buildAmmBuyNo,
   buildAmmSellYes,
   buildAmmSellNo,
 } from "@/lib/contracts/clients";
-import { submitAndPoll, parseDikeError } from "@/lib/stellar/transaction";
+import { submitAndPoll, parseDikeError, feeFromXdr, formatFeeXlm } from "@/lib/stellar/transaction";
 import { parseUsdc, formatUsdc, applySlippage } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
 import type { TxState } from "@/lib/types";
@@ -33,7 +35,8 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
   const [side, setSide] = useState<Side>("buy");
   const [token, setToken] = useState<Token>("yes");
   const [amountInput, setAmountInput] = useState("");
-  const [quote, setQuote] = useState<{ amountOut: string; feeBps: number } | null>(null);
+  const [quote, setQuote] = useState<{ amountOut: string; feeBps: number; priceImpactBps: number } | null>(null);
+  const [simulatedFee, setSimulatedFee] = useState<string | null>(null);
   const [quoting, setQuoting] = useState(false);
   const [txState, setTxState] = useState<TxState>({ status: "idle", hash: null, error: null });
   const [isPending, startTransition] = useTransition();
@@ -41,6 +44,7 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
   useEffect(() => {
     if (!address || !amountInput || parseFloat(amountInput) <= 0) {
       setQuote(null);
+      setSimulatedFee(null);
       return;
     }
     setQuoting(true);
@@ -54,12 +58,13 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
             : await ammQuoteBuyNo(address, poolId, rawIn);
         } else {
           q = token === "yes"
-            ? await ammQuoteBuyNo(address, poolId, rawIn)
-            : await ammQuoteBuyYes(address, poolId, rawIn);
+            ? await ammQuoteSellYes(address, poolId, rawIn)
+            : await ammQuoteSellNo(address, poolId, rawIn);
         }
-        setQuote({ amountOut: q.amountOut, feeBps: q.feeBps });
+        setQuote({ amountOut: q.amountOut, feeBps: q.feeBps, priceImpactBps: q.priceImpactBps });
       } catch (e) {
         setQuote(null);
+        setSimulatedFee(null);
         setTxState({ status: "failed", hash: null, error: parseDikeError(e) });
       } finally {
         setQuoting(false);
@@ -85,6 +90,7 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
             ? await buildAmmSellYes(address, poolId, rawIn, minOut, TRADE_DEADLINE_SECS)
             : await buildAmmSellNo(address, poolId, rawIn, minOut, TRADE_DEADLINE_SECS);
         }
+        setSimulatedFee(formatFeeXlm(feeFromXdr(xdr)));
         setTxState({ status: "awaiting-signature", hash: null, error: null });
         const signedXdr = await sign(xdr);
         setTxState({ status: "submitting", hash: null, error: null });
@@ -193,8 +199,10 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
           <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 space-y-2 animate-in fade-in-0 slide-in-from-top-2 duration-300">
             <QuoteRow label="Estimated out" value={`${formatUsdc(BigInt(quote.amountOut))} ${side === "buy" ? "tokens" : "USDC"}`} highlight />
             <QuoteRow label="Min received" value={`${formatUsdc(applySlippage(BigInt(quote.amountOut), DEFAULT_SLIPPAGE_BPS))} ${side === "buy" ? "tokens" : "USDC"}`} />
+            <QuoteRow label="Price impact" value={`${quote.priceImpactBps / 100}%`} />
             <QuoteRow label="Fee / Slippage" value={`${quote.feeBps / 100}% / ${DEFAULT_SLIPPAGE_BPS / 100}%`} />
             <QuoteRow label="Deadline" value={`${TRADE_DEADLINE_SECS / 60} min`} />
+            {simulatedFee && <QuoteRow label="Simulated network fee" value={simulatedFee} />}
           </div>
         )}
 

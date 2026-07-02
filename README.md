@@ -1,36 +1,87 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# dike-web
+
+The frontend for [Dike Protocol](https://github.com/Dike-Protocol) — a binary prediction-market platform built on Stellar/Soroban.
+
+Next.js App Router app that reads market/portfolio/council/governance state from `dike-services`' REST API and submits transactions directly to the Soroban contracts in `dike-contracts` via a connected Stellar wallet (Freighter-style signing). There are no generated contract bindings here — Soroban XDR encoding/decoding is hand-written in `lib/stellar` and `lib/contracts`.
+
+> [!IMPORTANT]
+> This project's `next` dependency has non-standard changes vs upstream Next.js. Check `node_modules/next/dist/docs/` before relying on API behavior from training data or public Next.js docs.
+
+## Architecture
+
+```
+Wallet (Freighter) ──sign──► lib/stellar/transaction.ts ──submit──► Soroban RPC
+        ▲                            │
+        │                    lib/contracts/clients.ts (hand-rolled XDR encode)
+        │                            │
+   lib/contexts/wallet.tsx    lib/contracts/manifest.ts ──► testnet.json (contract IDs)
+        │
+   features/*  ◄──reads──  lib/api/client.ts ──► /api/proxy/* ──► dike-services REST API
+```
+
+**Read path:** pages call `lib/api` helpers, which hit `dike-services` through a same-origin proxy (`app/api/proxy/[...path]/route.ts` rewrites to `NEXT_PUBLIC_DIKE_SERVICES_URL`), and normalize responses via `lib/api/normalizers.ts`.
+
+**Write path:** feature components build an unsigned transaction (`lib/contracts/clients.ts`), request a wallet signature (`lib/contexts/wallet.tsx`), then submit + poll via `lib/stellar/transaction.ts`. Contract errors are decoded through `DIKE_ERROR_MAP`, which must stay in sync with `dike_types::DikeError` in `dike-contracts`.
+
+## Routes
+
+| Path | Purpose |
+| --- | --- |
+| `/dashboard` | Portfolio overview: positions, LP shares, vault state, redeemables |
+| `/markets` | Market list with status/tradeability filters |
+| `/predictions` | Market detail, trading, liquidity |
+| `/create-predic` | Approved-creator market creation flow |
+| `/resolve` | Resolution lifecycle: propose, dispute, escalate, finalize |
+| `/council` | Council of Dike commit-reveal voting + reward claims |
+| `/admin` | Governance config, module addresses, timelock queue/execute |
+| `/profile` | Connected wallet identity |
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+npm install
+cp .env.example .env
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Requires a running `dike-services` instance (defaults to `http://localhost:4000`) for all read paths, and a Freighter-compatible wallet extension for signing transactions.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Configuration
 
-## Learn More
+| Variable | Description |
+| --- | --- |
+| `NEXT_PUBLIC_STELLAR_NETWORK` | `mainnet`, `testnet`, or `local` |
+| `NEXT_PUBLIC_STELLAR_RPC_URL` | Soroban RPC endpoint used for simulation/submission |
+| `NEXT_PUBLIC_STELLAR_HORIZON_URL` | Horizon endpoint |
+| `NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE` | Must match the configured network |
+| `NEXT_PUBLIC_DIKE_SERVICES_URL` | `dike-services` base URL, proxied at `/api/proxy/*` |
+| `NEXT_PUBLIC_DIKE_MANIFEST_NETWORK` | Which key of `lib/contracts/testnet.json` to read contract IDs from |
 
-To learn more about Next.js, take a look at the following resources:
+Contract IDs come from `lib/contracts/testnet.json`, a copy of `dike-contracts/deployments/<network>.json`. Keep it in sync manually after any contract redeploy — there is no build-time fetch or symlink.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Project Structure
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+app/              # App Router routes ((app) group: dashboard, markets, predictions, etc.)
+features/         # Feature components (trading, admin, council, portfolio, resolution)
+lib/api/          # dike-services REST client + response normalizers
+lib/contexts/     # Wallet connection context
+lib/contracts/    # Manifest loader, hand-rolled contract call builders
+lib/stellar/      # ScVal codecs, transaction build/sign/submit/poll, error decoding
+lib/types/        # Shared frontend types
+```
 
-## Deploy on Vercel
+## Testing
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm run lint       # eslint
+npx tsc --noEmit   # typecheck
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+No automated UI test suite — verify trading/liquidity/resolution/council/governance flows manually against a running `dike-services` + testnet contracts before shipping changes to `lib/contracts` or `lib/stellar`.
+
+## Deployment
+
+No CI workflow in this repo; deploys are driven by the hosting platform's git integration on push. Set the `NEXT_PUBLIC_*` variables above in the hosting environment, matching whichever network's manifest `lib/contracts/testnet.json` reflects.

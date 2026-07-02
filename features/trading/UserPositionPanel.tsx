@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useWallet } from "@/lib/contexts/wallet";
-import { apiGet } from "@/lib/api/client";
+import { ammGetLpBalance, ctBalance } from "@/lib/contracts/clients";
 import { formatUsdc } from "@/lib/stellar/scval";
 
 interface PositionData {
@@ -22,19 +22,13 @@ export function UserPositionPanel({ marketId, poolId }: UserPositionPanelProps) 
 
   useEffect(() => {
     if (!address) return;
-    apiGet<{
-      positions: Array<{ market_id: string; outcome: string; balance: string }>;
-      lpPositions: Array<{ pool_id: string; shares: string }>;
-      vaultState: unknown[];
-    }>(`/users/${address}/portfolio`)
-      .then((data) => {
-        const mktPositions = data.positions.filter((p) => p.market_id === marketId);
-        const yes = mktPositions.find((p) => p.outcome === "Yes")?.balance ?? "0";
-        const no = mktPositions.find((p) => p.outcome === "No")?.balance ?? "0";
-        const lp = poolId
-          ? (data.lpPositions.find((p) => p.pool_id === poolId)?.shares ?? "0")
-          : "0";
-        setPosition({ yesBalance: yes, noBalance: no, lpShares: lp });
+    Promise.all([
+      ctBalance(address, address, marketId, "Yes").catch(() => "0"),
+      ctBalance(address, address, marketId, "No").catch(() => "0"),
+      poolId ? ammGetLpBalance(address, address, poolId).catch(() => "0") : Promise.resolve("0"),
+    ])
+      .then(([yesBalance, noBalance, lpShares]) => {
+        setPosition({ yesBalance, noBalance, lpShares });
       })
       .catch(() => {});
   }, [address, marketId, poolId]);

@@ -12,7 +12,7 @@ import {
 } from "@/lib/contracts/clients";
 import { apiGet } from "@/lib/api/client";
 import { normalizeMarketData } from "@/lib/api/normalizers";
-import { submitAndPoll, parseDikeError } from "@/lib/stellar/transaction";
+import { submitAndPoll, parseDikeError, feeFromXdr, formatFeeXlm } from "@/lib/stellar/transaction";
 import { parseUsdc, formatUsdc, applySlippage } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
 import type { TxState, Outcome, MarketData } from "@/lib/types";
@@ -37,7 +37,8 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
   const [creditLoading, setCreditLoading] = useState(false);
   const [token, setToken] = useState<ChildToken>("yes");
   const [amountInput, setAmountInput] = useState("");
-  const [quote, setQuote] = useState<{ amountOut: string; feeBps: number } | null>(null);
+  const [quote, setQuote] = useState<{ amountOut: string; feeBps: number; priceImpactBps: number } | null>(null);
+  const [simulatedFee, setSimulatedFee] = useState<string | null>(null);
   const [quoting, setQuoting] = useState(false);
   const [txState, setTxState] = useState<TxState>({ status: "idle", hash: null, error: null });
   const [isPending, startTransition] = useTransition();
@@ -77,6 +78,7 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
   useEffect(() => {
     if (!address || !amountInput || parseFloat(amountInput) <= 0) {
       setQuote(null);
+      setSimulatedFee(null);
       return;
     }
     setQuoting(true);
@@ -87,9 +89,10 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
           token === "yes"
             ? await ammQuoteBuyYes(address, poolId, rawIn)
             : await ammQuoteBuyNo(address, poolId, rawIn);
-        setQuote({ amountOut: q.amountOut, feeBps: q.feeBps });
+        setQuote({ amountOut: q.amountOut, feeBps: q.feeBps, priceImpactBps: q.priceImpactBps });
       } catch {
         setQuote(null);
+        setSimulatedFee(null);
       } finally {
         setQuoting(false);
       }
@@ -102,12 +105,16 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
     startTransition(async () => {
       try {
         const rawIn = parseUsdc(amountInput).toString();
+        if (availableCredit !== null && BigInt(rawIn) > BigInt(availableCredit)) {
+          throw new Error("Requested amount exceeds available parent credit.");
+        }
         const minOut = applySlippage(BigInt(quote.amountOut), DEFAULT_SLIPPAGE_BPS).toString();
         setTxState({ status: "building", hash: null, error: null });
         const xdr =
           token === "yes"
             ? await buildAmmBuyChildYes(address, parentMarketId, parentOutcome as Outcome, poolId, rawIn, minOut, TRADE_DEADLINE_SECS)
             : await buildAmmBuyChildNo(address, parentMarketId, parentOutcome as Outcome, poolId, rawIn, minOut, TRADE_DEADLINE_SECS);
+        setSimulatedFee(formatFeeXlm(feeFromXdr(xdr)));
         setTxState({ status: "awaiting-signature", hash: null, error: null });
         const signedXdr = await sign(xdr);
         setTxState({ status: "submitting", hash: null, error: null });
@@ -121,6 +128,8 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
         const message =
           code === "InvalidStatus"
             ? "Parent market is no longer live (resolved, cancelled, or paused) — child credit can't be opened against it."
+            : code.includes("exceeds available parent credit")
+            ? code
             : code;
         setTxState({ status: "failed", hash: null, error: message });
       }
@@ -141,7 +150,17 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
     );
   }
 
-  const canBuy = Boolean(quote && amountInput && parentMarketId && !isPending && !quoting);
+  const exceedsCredit =
+    availableCredit !== null &&
+    amountInput.length > 0 &&
+    (() => {
+      try {
+        return parseUsdc(amountInput) > BigInt(availableCredit);
+      } catch {
+        return false;
+      }
+    })();
+  const canBuy = Boolean(quote && amountInput && parentMarketId && !isPending && !quoting && !exceedsCredit);
 
   return (
     <div className="rounded-2xl bg-white/[0.03] border border-white/[0.07] overflow-hidden">
@@ -283,6 +302,11 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
               <span className="text-sm text-white/30 shrink-0">USDC</span>
             </div>
             {quoting && <p className="text-[10px] text-white/30 mt-1.5 animate-pulse">Fetching quote…</p>}
+            {exceedsCredit && (
+              <p className="text-[10px] text-amber-300 mt-1.5">
+                Amount exceeds available parent credit.
+              </p>
+            )}
           </div>
 
           {/* Quote */}
@@ -296,6 +320,16 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
                 <span className="text-white/35">Min received</span>
                 <span className="text-white/50">{formatUsdc(applySlippage(BigInt(quote.amountOut), DEFAULT_SLIPPAGE_BPS))} tokens</span>
               </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-white/35">Price impact</span>
+                <span className="text-white/50">{quote.priceImpactBps / 100}%</span>
+              </div>
+              {simulatedFee && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-white/35">Simulated network fee</span>
+                  <span className="text-white/50">{simulatedFee}</span>
+                </div>
+              )}
             </div>
           )}
 

@@ -13,10 +13,13 @@ const STATUSES: MarketStatus[] = [
   "Cancelled",
 ];
 
+const CATEGORIES = ["Politics", "Sports", "Crypto", "Business", "General"];
+
 export function MarketFilters() {
   const router = useRouter();
   const params = useSearchParams();
   const current = params.get("status") ?? "";
+  const currentCategory = params.get("category") ?? "";
 
   function setFilter(status: string) {
     const next = new URLSearchParams(params.toString());
@@ -25,27 +28,57 @@ export function MarketFilters() {
     router.push(`?${next.toString()}`);
   }
 
+  function setCategory(category: string) {
+    const next = new URLSearchParams(params.toString());
+    if (category) next.set("category", category);
+    else next.delete("category");
+    router.push(`?${next.toString()}`);
+  }
+
   return (
-    <div className="flex flex-wrap gap-2">
-      <Button
-        size="xs"
-        variant={!current ? "default" : "outline"}
-        className="rounded-full"
-        onClick={() => setFilter("")}
-      >
-        All
-      </Button>
-      {STATUSES.map((s) => (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
         <Button
-          key={s}
           size="xs"
-          variant={current === s ? "default" : "outline"}
+          variant={!current ? "default" : "outline"}
           className="rounded-full"
-          onClick={() => setFilter(s)}
+          onClick={() => setFilter("")}
         >
-          {s}
+          All Statuses
         </Button>
-      ))}
+        {STATUSES.map((s) => (
+          <Button
+            key={s}
+            size="xs"
+            variant={current === s ? "default" : "outline"}
+            className="rounded-full"
+            onClick={() => setFilter(s)}
+          >
+            {s}
+          </Button>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          size="xs"
+          variant={!currentCategory ? "default" : "outline"}
+          className="rounded-full"
+          onClick={() => setCategory("")}
+        >
+          All Categories
+        </Button>
+        {CATEGORIES.map((category) => (
+          <Button
+            key={category}
+            size="xs"
+            variant={currentCategory === category ? "default" : "outline"}
+            className="rounded-full"
+            onClick={() => setCategory(category)}
+          >
+            {category}
+          </Button>
+        ))}
+      </div>
     </div>
   );
 }

@@ -11,6 +11,7 @@ import {
   fromI128,
   fromBool,
   fromScVal,
+  impliedYesBps,
 } from "@/lib/stellar/scval";
 import { CONTRACT_IDS, COLLATERAL_CONTRACT } from "./manifest";
 import type {
@@ -49,6 +50,56 @@ function id(n: string | number): StellarSdk.xdr.ScVal {
   return toU64(BigInt(n));
 }
 
+function feeBpsFromQuote(fee: bigint, grossAmount: bigint): number {
+  if (grossAmount <= 0n) return 0;
+  return Number((fee * 10_000n) / grossAmount);
+}
+
+function priceImpactFromQuote(
+  averagePriceBps: number,
+  yesReserve: string,
+  noReserve: string,
+  token: "yes" | "no",
+): number {
+  const yesSpot = impliedYesBps(yesReserve, noReserve);
+  const spot = token === "yes" ? yesSpot : 10_000 - yesSpot;
+  return Math.abs(averagePriceBps - spot);
+}
+
+async function readQuote(
+  source: string,
+  poolId: string,
+  method: "quote_buy_yes" | "quote_buy_no" | "quote_sell_yes" | "quote_sell_no",
+  amountIn: string,
+  token: "yes" | "no",
+): Promise<TradeQuote> {
+  const [val, pool] = await Promise.all([
+    simulateRead(source, CONTRACT_IDS.amm(), method, [id(poolId), amt(amountIn)]),
+    ammGetPool(source, poolId),
+  ]);
+  const native = fromScVal(val) as {
+    amount_out: string;
+    fee: string;
+    net_in: string;
+    average_price_bps: number;
+  };
+  const fee = BigInt(String(native.fee ?? "0"));
+  const netIn = BigInt(String(native.net_in ?? "0"));
+  const grossAmount = fee + netIn;
+  const averagePriceBps = Number(native.average_price_bps ?? 0);
+  return {
+    amountIn,
+    amountOut: String(native.amount_out),
+    priceImpactBps: priceImpactFromQuote(
+      averagePriceBps,
+      pool.yesReserve,
+      pool.noReserve,
+      token,
+    ),
+    feeBps: feeBpsFromQuote(fee, grossAmount),
+  };
+}
+
 // Build a Soroban struct ScMap with sorted symbol keys.
 // Soroban #[contracttype] structs encode as ScMap<ScvSymbol, ScVal> with lexicographic key order.
 function scvStruct(fields: [string, StellarSdk.xdr.ScVal][]): StellarSdk.xdr.ScVal {
@@ -83,17 +134,7 @@ export async function ammQuoteBuyYes(
   poolId: string,
   amountIn: string
 ): Promise<TradeQuote> {
-  const val = await simulateRead(source, CONTRACT_IDS.amm(), "quote_buy_yes", [
-    id(poolId),
-    amt(amountIn),
-  ]);
-  const native = fromScVal(val) as { amount_out: string; fee_bps: number };
-  return {
-    amountIn,
-    amountOut: String(native.amount_out),
-    priceImpactBps: 0,
-    feeBps: native.fee_bps ?? 0,
-  };
+  return readQuote(source, poolId, "quote_buy_yes", amountIn, "yes");
 }
 
 export async function ammQuoteBuyNo(
@@ -101,17 +142,23 @@ export async function ammQuoteBuyNo(
   poolId: string,
   amountIn: string
 ): Promise<TradeQuote> {
-  const val = await simulateRead(source, CONTRACT_IDS.amm(), "quote_buy_no", [
-    id(poolId),
-    amt(amountIn),
-  ]);
-  const native = fromScVal(val) as { amount_out: string; fee_bps: number };
-  return {
-    amountIn,
-    amountOut: String(native.amount_out),
-    priceImpactBps: 0,
-    feeBps: native.fee_bps ?? 0,
-  };
+  return readQuote(source, poolId, "quote_buy_no", amountIn, "no");
+}
+
+export async function ammQuoteSellYes(
+  source: string,
+  poolId: string,
+  amountIn: string
+): Promise<TradeQuote> {
+  return readQuote(source, poolId, "quote_sell_yes", amountIn, "yes");
+}
+
+export async function ammQuoteSellNo(
+  source: string,
+  poolId: string,
+  amountIn: string
+): Promise<TradeQuote> {
+  return readQuote(source, poolId, "quote_sell_no", amountIn, "no");
 }
 
 export async function buildAmmBuyYes(
@@ -281,7 +328,7 @@ export async function ammGetPool(
     marketId: String(native.market_id ?? ""),
     yesReserve: String(native.yes_reserve ?? "0"),
     noReserve: String(native.no_reserve ?? "0"),
-    lpSupply: String(native.lp_supply ?? "0"),
+    lpSupply: String(native.total_lp_shares ?? "0"),
     feeBps: Number(native.fee_bps ?? 0),
   };
 }

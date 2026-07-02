@@ -1,6 +1,7 @@
 "use client";
 
 import type { TxState } from "@/lib/types";
+import { networkConfig } from "@/lib/stellar/config";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { LoadingSpinner } from "./LoadingSpinner";
 
@@ -30,7 +31,7 @@ function getVariant(status: string): AlertVariant {
 
 export function TxStateDisplay({
   state,
-  explorerBase = "https://stellar.expert/explorer/testnet/tx",
+  explorerBase = `https://stellar.expert/explorer/${networkConfig.network}/tx`,
 }: TxStateProps) {
   if (state.status === "idle") return null;
 

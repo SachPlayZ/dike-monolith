@@ -14,6 +14,8 @@ export const metadata = {
 };
 
 async function CouncilCaseList() {
+  // Council case reads are intentionally public protocol state. SectionGate is
+  // a wallet-role UX guard, not a confidentiality boundary for this RSC fetch.
   let cases: CouncilCase[] = [];
   let error: string | null = null;
 

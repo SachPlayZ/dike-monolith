@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import * as StellarSdk from "@stellar/stellar-sdk";
 import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 import { useWallet } from "@/lib/contexts/wallet";
@@ -90,6 +91,11 @@ export default function CreateMarketPage() {
     const expiryTs = Math.floor(new Date(form.expiry).getTime() / 1000);
     if (expiryTs <= Math.floor(Date.now() / 1000)) return "Expiry must be in the future";
     if (!form.collateral.trim()) return "Collateral address is required";
+    try {
+      StellarSdk.Address.fromString(form.collateral.trim());
+    } catch {
+      return "Collateral address must be a valid Stellar address";
+    }
     if (Number(form.bondAmount) <= 0) return "Bond amount must be positive";
     if (Number(form.disputeWindowHours) <= 0) return "Dispute window must be positive";
     if (Number(form.initialLiquidity) <= 0) return "Initial liquidity must be positive";

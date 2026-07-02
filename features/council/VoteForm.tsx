@@ -9,7 +9,7 @@ import {
   buildFinalizeCase,
   buildClaimReward,
 } from "@/lib/contracts/clients";
-import { submitAndPoll, parseDikeError } from "@/lib/stellar/transaction";
+import { submitAndPoll, parseDikeError, feeFromXdr, formatFeeXlm } from "@/lib/stellar/transaction";
 import { fromScVal, formatUsdc } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
 import { Button } from "@/components/ui/button";
@@ -45,6 +45,7 @@ export function VoteForm({ councilCase, onSuccess }: VoteFormProps) {
   const [now, setNow] = useState(0);
   const [txState, setTxState] = useState<TxState>({ status: "idle", hash: null, error: null });
   const [rewardPayout, setRewardPayout] = useState<{ correct: boolean; payout: string } | null>(null);
+  const [simulatedFee, setSimulatedFee] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -84,6 +85,7 @@ export function VoteForm({ councilCase, onSuccess }: VoteFormProps) {
       try {
         setTxState({ status: "building", hash: null, error: null });
         const xdr = await buildFn();
+        setSimulatedFee(formatFeeXlm(feeFromXdr(xdr)));
         setTxState({ status: "awaiting-signature", hash: null, error: null });
         const signedXdr = await sign(xdr);
         setTxState({ status: "submitting", hash: null, error: null });
@@ -142,9 +144,13 @@ export function VoteForm({ councilCase, onSuccess }: VoteFormProps) {
     if (!address) return;
     const stored = localStorage.getItem(PENDING_KEY(address, councilCase.caseId));
     if (!stored) return;
-    const pending = JSON.parse(stored) as { outcome: Outcome; salt: string };
-    setSelectedOutcome(pending.outcome);
-    setRevealSalt(pending.salt);
+    try {
+      const pending = JSON.parse(stored) as { outcome: Outcome; salt: string };
+      setSelectedOutcome(pending.outcome);
+      setRevealSalt(pending.salt);
+    } catch {
+      toast.error("Stored reveal data is corrupted. Re-enter the saved salt manually.");
+    }
   }
 
   return (
@@ -270,6 +276,12 @@ export function VoteForm({ councilCase, onSuccess }: VoteFormProps) {
             )}
           </CardContent>
         </Card>
+      )}
+
+      {simulatedFee && (
+        <p className="text-xs text-muted-foreground">
+          Simulated network fee: {simulatedFee}
+        </p>
       )}
 
       <TxStateDisplay state={txState} />

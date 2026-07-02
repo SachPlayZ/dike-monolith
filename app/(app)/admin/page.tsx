@@ -23,6 +23,8 @@ async function loadAdminData() {
     const error =
       e instanceof ServiceUnavailableError
         ? "dike-services is not running. Start it to view governance state."
+        : e instanceof Error && e.message.includes("API error 401")
+        ? "Admin reads are now protected behind a server-side admin API key and are not exposed through the public web session."
         : e instanceof Error
         ? e.message
         : "Failed to load admin state";
@@ -31,6 +33,9 @@ async function loadAdminData() {
 }
 
 async function AdminContent() {
+  // This server component fetches before the client-side SectionGate renders.
+  // That is acceptable here because dike-services now enforces server-side admin
+  // auth for these endpoints, so the gate is UX-only rather than a secrecy boundary.
   const { state, timelockActions, error } = await loadAdminData();
   if (error || !state || !timelockActions) {
     return <EmptyState title="Unavailable" description={error ?? "Failed to load admin state"} />;

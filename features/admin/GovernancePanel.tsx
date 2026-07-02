@@ -151,6 +151,9 @@ function TimelockRow({ action, executable }: { action: TimelockAction; executabl
 
   function handleExecute() {
     if (!address) return;
+    if (!window.confirm(`Execute timelock action ${action.actionId.slice(0, 8)}… now? This is irreversible.`)) {
+      return;
+    }
     startTransition(async () => {
       try {
         setError(null);

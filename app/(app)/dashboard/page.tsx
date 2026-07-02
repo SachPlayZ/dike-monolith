@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useWallet } from "@/lib/contexts/wallet";
 import { fetchPortfolio } from "@/lib/api/portfolio";
+import { hydratePortfolioPositions } from "@/lib/portfolio/live";
 import { PositionCard } from "@/features/portfolio/PositionCard";
 import { RedeemForm } from "@/features/portfolio/RedeemForm";
 import { EmptyState } from "@/components/data-state/EmptyState";
@@ -28,7 +29,8 @@ export default function DashboardPage() {
   async function refreshPortfolio(nextAddress: string) {
     try {
       const nextPositions = await fetchPortfolio(nextAddress);
-      setPositions(nextPositions);
+      const livePositions = await hydratePortfolioPositions(nextAddress, nextPositions);
+      setPositions(livePositions);
       setError(null);
     } catch (e) {
       setPositions([]);
@@ -48,6 +50,7 @@ export default function DashboardPage() {
     if (!address) return;
     let cancelled = false;
     void fetchPortfolio(address)
+      .then((nextPositions) => hydratePortfolioPositions(address, nextPositions))
       .then((nextPositions) => {
         if (cancelled) return;
         setPositions(nextPositions);

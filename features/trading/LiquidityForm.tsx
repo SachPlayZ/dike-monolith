@@ -9,8 +9,9 @@ import {
   buildAmmClaimLpFees,
   ammGetLpBalance,
   ammGetClaimableLpFees,
+  ammGetPool,
 } from "@/lib/contracts/clients";
-import { submitAndPoll, parseDikeError } from "@/lib/stellar/transaction";
+import { submitAndPoll, parseDikeError, feeFromXdr, formatFeeXlm } from "@/lib/stellar/transaction";
 import { parseUsdc, formatUsdc } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
 import type { TxState } from "@/lib/types";
@@ -28,6 +29,10 @@ export function LiquidityForm({ poolId }: LiquidityFormProps) {
   const [amountInput, setAmountInput] = useState("");
   const [lpBalance, setLpBalance] = useState<string | null>(null);
   const [claimableFees, setClaimableFees] = useState<string | null>(null);
+  const [lpSupply, setLpSupply] = useState<string | null>(null);
+  const [yesReserve, setYesReserve] = useState<string | null>(null);
+  const [noReserve, setNoReserve] = useState<string | null>(null);
+  const [simulatedFee, setSimulatedFee] = useState<string | null>(null);
   const [txState, setTxState] = useState<TxState>({ status: "idle", hash: null, error: null });
   const [isClaiming, startClaimTransition] = useTransition();
   const [isPending, startTransition] = useTransition();
@@ -40,6 +45,40 @@ export function LiquidityForm({ poolId }: LiquidityFormProps) {
     ammGetClaimableLpFees(address, address, poolId)
       .then((fees) => setClaimableFees(fees))
       .catch(() => setClaimableFees(null));
+    ammGetPool(address, poolId)
+      .then((pool) => {
+        setLpSupply(pool.lpSupply);
+        setYesReserve(pool.yesReserve);
+        setNoReserve(pool.noReserve);
+      })
+      .catch(() => {
+        setLpSupply(null);
+        setYesReserve(null);
+        setNoReserve(null);
+      });
+  }
+
+  let expectedLpShares: bigint | null = null;
+  if (
+    mode === "add" &&
+    amountInput &&
+    lpSupply !== null &&
+    yesReserve !== null &&
+    noReserve !== null
+  ) {
+    try {
+      const amount = parseUsdc(amountInput);
+      const totalShares = BigInt(lpSupply);
+      const yes = BigInt(yesReserve);
+      const no = BigInt(noReserve);
+      if (amount > 0n && totalShares > 0n && yes > 0n && no > 0n) {
+        const yesShares = (totalShares * amount) / yes;
+        const noShares = (totalShares * amount) / no;
+        expectedLpShares = yesShares < noShares ? yesShares : noShares;
+      }
+    } catch {
+      expectedLpShares = null;
+    }
   }
 
   useEffect(() => {
@@ -54,6 +93,7 @@ export function LiquidityForm({ poolId }: LiquidityFormProps) {
       try {
         setTxState({ status: "building", hash: null, error: null });
         const xdr = await buildAmmClaimLpFees(address, poolId);
+        setSimulatedFee(formatFeeXlm(feeFromXdr(xdr)));
         setTxState({ status: "awaiting-signature", hash: null, error: null });
         const signedXdr = await sign(xdr);
         setTxState({ status: "submitting", hash: null, error: null });
@@ -76,6 +116,7 @@ export function LiquidityForm({ poolId }: LiquidityFormProps) {
           mode === "add"
             ? await buildAmmAddLiquidity(address, poolId, rawAmount)
             : await buildAmmRemoveLiquidity(address, poolId, rawAmount);
+        setSimulatedFee(formatFeeXlm(feeFromXdr(xdr)));
         setTxState({ status: "awaiting-signature", hash: null, error: null });
         const signedXdr = await sign(xdr);
         setTxState({ status: "submitting", hash: null, error: null });
@@ -175,7 +216,7 @@ export function LiquidityForm({ poolId }: LiquidityFormProps) {
               </div>
               <button
                 onClick={handleClaimFees}
-                disabled={isClaiming}
+                disabled={isClaiming || isPending}
                 className="px-3 py-1.5 rounded-lg bg-orange-500/15 border border-orange-500/25 text-orange-300 text-[10px] font-bold uppercase tracking-widest hover:bg-orange-500/25 transition-all duration-200 disabled:opacity-50"
               >
                 {isClaiming ? "Claiming…" : "Claim"}
@@ -207,10 +248,28 @@ export function LiquidityForm({ poolId }: LiquidityFormProps) {
             </div>
           </div>
 
+          {mode === "add" && expectedLpShares !== null && (
+            <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.07]">
+              <span className="text-xs text-white/40">Expected LP shares</span>
+              <span className="text-sm font-semibold font-mono text-white/70">
+                {formatUsdc(expectedLpShares)}
+              </span>
+            </div>
+          )}
+
+          {simulatedFee && (
+            <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.07]">
+              <span className="text-xs text-white/40">Simulated network fee</span>
+              <span className="text-sm font-semibold font-mono text-white/70">
+                {simulatedFee}
+              </span>
+            </div>
+          )}
+
           {/* CTA */}
           <button
             onClick={handleSubmit}
-            disabled={isPending || !amountInput}
+            disabled={isPending || isClaiming || !amountInput}
             className={cn(
               "w-full py-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.98]",
               amountInput && !isPending

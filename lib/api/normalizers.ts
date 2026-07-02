@@ -160,6 +160,7 @@ export function normalizePortfolio(
 
     return {
       marketId,
+      poolId: market?.poolId ?? null,
       question: market?.config.question ?? `Market #${marketId}`,
       yesBalance: positionMap.get("Yes") ?? "0",
       noBalance: positionMap.get("No") ?? "0",

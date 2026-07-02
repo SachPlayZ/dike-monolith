@@ -10,6 +10,7 @@ import {
   buildEscalateToCouncil,
 } from "@/lib/contracts/clients";
 import { submitAndPoll, parseDikeError } from "@/lib/stellar/transaction";
+import { formatUsdc } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -109,7 +110,7 @@ export function ResolutionPanel({ market, request, onSuccess }: ResolutionPanelP
           <OutcomeSelector value={selectedOutcome} onChange={setSelectedOutcome} />
           <EvidenceInput value={evidenceUri} onChange={setEvidenceUri} />
           <p className="text-xs text-muted-foreground">
-            Bond amount: {market.config.bondAmount} (will be locked until finalization)
+            Bond amount: {formatUsdc(BigInt(market.config.bondAmount))} USDC (will be locked until finalization)
           </p>
           <Button
             size="sm"
@@ -163,7 +164,9 @@ export function ResolutionPanel({ market, request, onSuccess }: ResolutionPanelP
                     size="sm"
                     disabled={isPending}
                     onClick={() =>
-                      exec(() => buildFinalizeUndisputed(address!, request.requestId))
+                      window.confirm("Finalize this undisputed outcome? This action is irreversible.")
+                        ? exec(() => buildFinalizeUndisputed(address!, request.requestId))
+                        : undefined
                     }
                   >
                     Finalize (undisputed)
@@ -183,7 +186,11 @@ export function ResolutionPanel({ market, request, onSuccess }: ResolutionPanelP
           <Button
             size="sm"
             disabled={isPending}
-            onClick={() => exec(() => buildEscalateToCouncil(address!, request.requestId))}
+            onClick={() =>
+              window.confirm("Escalate this disputed market to Council of Dike? This cannot be undone.")
+                ? exec(() => buildEscalateToCouncil(address!, request.requestId))
+                : undefined
+            }
           >
             Escalate to Council
           </Button>

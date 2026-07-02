@@ -139,6 +139,7 @@ export interface TimelockAction {
 
 export interface UserPosition {
   marketId: string;
+  poolId: string | null;
   question: string;
   yesBalance: string;
   noBalance: string;

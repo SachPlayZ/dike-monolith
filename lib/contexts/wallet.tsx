@@ -63,8 +63,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setNetworkError(null);
     try {
       // Verify network before connecting
-      const walletNet = await kitGetNetwork().catch(() => null);
-      if (walletNet && walletNet !== networkConfig.networkPassphrase) {
+      let walletNet: string;
+      try {
+        walletNet = await kitGetNetwork();
+      } catch {
+        throw new Error("Could not determine wallet network. Connection blocked until the wallet reports its active network.");
+      }
+      if (walletNet !== networkConfig.networkPassphrase) {
         setNetworkError(
           `Wrong network. Expected "${networkConfig.networkPassphrase}", wallet is on "${walletNet}".`
         );
@@ -96,8 +101,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       if (!address) throw new Error("Wallet not connected");
 
       // Verify network before signing
-      const walletNet = await kitGetNetwork().catch(() => null);
-      if (walletNet && walletNet !== networkConfig.networkPassphrase) {
+      let walletNet: string;
+      try {
+        walletNet = await kitGetNetwork();
+      } catch {
+        throw new Error("Could not determine wallet network. Signing blocked until the wallet reports its active network.");
+      }
+      if (walletNet !== networkConfig.networkPassphrase) {
         throw new Error(
           `Wrong network. Switch wallet to Stellar Testnet before signing.`
         );

@@ -1,7 +1,5 @@
-"use client";
-
-import DashboardPage from "@/app/(app)/dashboard/page";
+import { redirect } from "next/navigation";
 
 export default function ProfilePage() {
-  return <DashboardPage />;
+  redirect("/dashboard");
 }

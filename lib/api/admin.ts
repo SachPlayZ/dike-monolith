@@ -1,4 +1,4 @@
-import { apiGet } from "./client";
+import { adminApiGet } from "./client";
 import { normalizeAdminState, normalizeTimelockAction } from "./normalizers";
 import type { AdminState, TimelockAction } from "@/lib/types";
 
@@ -9,11 +9,11 @@ interface GovernanceResponse {
 }
 
 export async function fetchGovernanceState(): Promise<AdminState> {
-  const response = await apiGet<GovernanceResponse>("/admin/governance");
+  const response = await adminApiGet<GovernanceResponse>("/admin/governance");
   return normalizeAdminState(response);
 }
 
 export async function fetchTimelockActions(): Promise<TimelockAction[]> {
-  const response = await apiGet<Record<string, unknown>[]>("/admin/timelock");
+  const response = await adminApiGet<Record<string, unknown>[]>("/admin/timelock");
   return response.map((item) => normalizeTimelockAction(item));
 }

@@ -15,7 +15,13 @@ interface PageProps {
   searchParams: Promise<{ status?: string; category?: string }>;
 }
 
-async function MarketList({ statusFilter }: { statusFilter: string }) {
+async function MarketList({
+  statusFilter,
+  categoryFilter,
+}: {
+  statusFilter: string;
+  categoryFilter: string;
+}) {
   let markets: MarketData[] = [];
   let error: string | null = null;
 
@@ -38,15 +44,23 @@ async function MarketList({ statusFilter }: { statusFilter: string }) {
     );
   }
 
-  const filtered = statusFilter
-    ? markets.filter((m) => m.status === statusFilter)
-    : markets;
+  const filtered = markets.filter((market) => {
+    const statusMatches = statusFilter ? market.status === statusFilter : true;
+    const categoryMatches = categoryFilter
+      ? market.config.category.toLowerCase() === categoryFilter.toLowerCase()
+      : true;
+    return statusMatches && categoryMatches;
+  });
 
   if (filtered.length === 0) {
     return (
       <EmptyState
         title="No markets found"
-        description={statusFilter ? `No markets with status "${statusFilter}".` : "No prediction markets yet."}
+        description={
+          statusFilter || categoryFilter
+            ? `No markets match the current filters${statusFilter ? ` (status: ${statusFilter})` : ""}${categoryFilter ? ` (category: ${categoryFilter})` : ""}.`
+            : "No prediction markets yet."
+        }
       />
     );
   }
@@ -61,7 +75,7 @@ async function MarketList({ statusFilter }: { statusFilter: string }) {
 }
 
 export default async function PredictionsPage({ searchParams }: PageProps) {
-  const { status: statusFilter = "" } = await searchParams;
+  const { status: statusFilter = "", category: categoryFilter = "" } = await searchParams;
 
   return (
     <div className="space-y-6">
@@ -77,7 +91,7 @@ export default async function PredictionsPage({ searchParams }: PageProps) {
       </Suspense>
 
       <Suspense fallback={<PageLoader />}>
-        <MarketList statusFilter={statusFilter} />
+        <MarketList statusFilter={statusFilter} categoryFilter={categoryFilter} />
       </Suspense>
     </div>
   );
