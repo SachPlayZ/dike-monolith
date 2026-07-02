@@ -71,9 +71,7 @@ fn set_timelock_rejects_wrong_signer() {
     let id = env.register(DikeGovernance, (&admin, &treasury));
     let client = DikeGovernanceClient::new(&env, &id);
     // No admin auth in context → require_admin panics
-    assert!(client
-        .try_set_timelock(&Address::generate(&env))
-        .is_err());
+    assert!(client.try_set_timelock(&Address::generate(&env)).is_err());
 }
 
 #[test]

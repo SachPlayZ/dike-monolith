@@ -1,14 +1,14 @@
 #![cfg(test)]
 
 use super::*;
+use council_of_dike::{CouncilOfDike, CouncilOfDikeClient};
 use dike_governance::{DikeGovernance, DikeGovernanceClient as RealGovernanceClient};
 use fee_manager::{FeeManager, FeeManagerClient};
 use market_factory::{DikeMarketFactory, DikeMarketFactoryClient};
 use market_registry::{DikeMarketRegistry, DikeMarketRegistryClient};
-use council_of_dike::{CouncilOfDike, CouncilOfDikeClient};
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
     symbol_short,
+    testutils::{Address as _, Ledger},
     Env,
 };
 
@@ -115,7 +115,10 @@ fn executes_treasury_and_fee_config_payloads() {
     client.execute(&fee_action);
     assert_eq!(gov.treasury(), new_treasury);
     assert_eq!(fee_manager.config().trading_fee_bps, 50);
-    assert_eq!(gov.fee_config().trading_fee_bps, FeeConfig::default().trading_fee_bps);
+    assert_eq!(
+        gov.fee_config().trading_fee_bps,
+        FeeConfig::default().trading_fee_bps
+    );
 }
 
 #[test]
@@ -263,7 +266,10 @@ fn executes_timelock_payload_to_rotate_governance_timelock() {
     let admin = Address::generate(&env);
     let proposer = Address::generate(&env);
     let executor = Address::generate(&env);
-    let id = env.register(DikeTimelock, (&admin, &proposer, &executor, &10u64, &100u64));
+    let id = env.register(
+        DikeTimelock,
+        (&admin, &proposer, &executor, &10u64, &100u64),
+    );
     let client = DikeTimelockClient::new(&env, &id);
     let (gov_id, gov) = setup_governance(&env, &id);
     let new_timelock = Address::generate(&env);
@@ -286,7 +292,10 @@ fn role_gated_fns_reject_wrong_signer() {
     let admin = Address::generate(&env);
     let proposer = Address::generate(&env);
     let executor = Address::generate(&env);
-    let id = env.register(DikeTimelock, (&admin, &proposer, &executor, &10u64, &100u64));
+    let id = env.register(
+        DikeTimelock,
+        (&admin, &proposer, &executor, &10u64, &100u64),
+    );
     let client = DikeTimelockClient::new(&env, &id);
     let payload = TimelockPayload::Pause(Address::generate(&env));
     let target = Address::generate(&env);
@@ -305,7 +314,10 @@ fn admin_gated_fns_reject_wrong_signer() {
     let admin = Address::generate(&env);
     let proposer = Address::generate(&env);
     let executor = Address::generate(&env);
-    let id = env.register(DikeTimelock, (&admin, &proposer, &executor, &10u64, &100u64));
+    let id = env.register(
+        DikeTimelock,
+        (&admin, &proposer, &executor, &10u64, &100u64),
+    );
     let client = DikeTimelockClient::new(&env, &id);
     let other = Address::generate(&env);
     assert!(client.try_set_admin(&other).is_err());

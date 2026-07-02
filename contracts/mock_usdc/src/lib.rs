@@ -180,7 +180,9 @@ impl MockUSDC {
         write_balance(
             &env,
             from.clone(),
-            current.checked_sub(amount).ok_or(DikeError::ArithmeticError)?,
+            current
+                .checked_sub(amount)
+                .ok_or(DikeError::ArithmeticError)?,
         );
         let supply: i128 = env
             .storage()
@@ -189,7 +191,9 @@ impl MockUSDC {
             .unwrap_or(0);
         env.storage().instance().set(
             &DataKey::TotalSupply,
-            &supply.checked_sub(amount).ok_or(DikeError::ArithmeticError)?,
+            &supply
+                .checked_sub(amount)
+                .ok_or(DikeError::ArithmeticError)?,
         );
         Burned { from, amount }.publish(&env);
         Ok(())

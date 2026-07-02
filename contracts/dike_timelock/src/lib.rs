@@ -20,11 +20,8 @@ pub trait DikeGovernance {
 
 #[contractclient(name = "MarketFactoryClient")]
 pub trait MarketFactory {
-    fn set_creator_by_timelock(
-        env: Env,
-        creator: Address,
-        approved: bool,
-    ) -> Result<(), DikeError>;
+    fn set_creator_by_timelock(env: Env, creator: Address, approved: bool)
+        -> Result<(), DikeError>;
 }
 
 #[contractclient(name = "CouncilClient")]
@@ -298,7 +295,8 @@ impl DikeTimelock {
                 CouncilClient::new(&env, &action.target).set_member(&addr, &approved);
             }
             TimelockPayload::SupportedCollateral(addr, supported) => {
-                RegistryClient::new(&env, &action.target).set_supported_collateral(&addr, &supported);
+                RegistryClient::new(&env, &action.target)
+                    .set_supported_collateral(&addr, &supported);
             }
             TimelockPayload::ModuleAddress(role, module) => {
                 RoleManagedClient::new(&env, &action.target).set_role(&role, &module);
