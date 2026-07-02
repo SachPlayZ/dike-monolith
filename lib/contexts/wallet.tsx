@@ -62,7 +62,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setIsConnecting(true);
     setNetworkError(null);
     try {
-      // Verify network before connecting
+      // Open the wallet picker/auth modal first — a module must be
+      // selected before getNetwork() can be called on it.
+      const addr = await kitConnect();
+
+      // Verify network now that a wallet module is selected
       let walletNet: string;
       try {
         walletNet = await kitGetNetwork();
@@ -70,13 +74,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         throw new Error("Could not determine wallet network. Connection blocked until the wallet reports its active network.");
       }
       if (walletNet !== networkConfig.networkPassphrase) {
+        await kitDisconnect().catch(() => {});
         setNetworkError(
           `Wrong network. Expected "${networkConfig.networkPassphrase}", wallet is on "${walletNet}".`
         );
         return;
       }
 
-      const addr = await kitConnect();
       setAddress(addr);
       sessionStorage.setItem(ADDRESS_KEY, addr);
     } catch (e) {
