@@ -276,7 +276,13 @@ fn failed_create_market_leaves_counter_unchanged() {
     tokens.set_role(&symbol_short!("vault"), &vault_id);
     amm.set_role(&symbol_short!("factory"), &id);
     amm.set_modules(&vault_id, &tokens_id, &collateral, &registry_id);
-    client.set_modules(&registry_id, &tokens_id, &vault_id, &amm_id, &fee_manager_id);
+    client.set_modules(
+        &registry_id,
+        &tokens_id,
+        &vault_id,
+        &amm_id,
+        &fee_manager_id,
+    );
     // Creator and collateral approved in FACTORY but not in REGISTRY.
     client.set_creator(&creator, &true);
     client.set_collateral(&collateral, &true);
@@ -314,9 +320,7 @@ fn role_gated_fns_reject_unconfigured_role() {
     // is via require_timelock (which reads governance.timelock).  Test that:
     // set_creator_by_timelock requires require_timelock which calls governance.timelock() cross-contract.
     // Governance is set to `gov` (plain address, no contract), so the cross-contract call panics.
-    assert!(client
-        .try_set_creator_by_timelock(&creator, &true)
-        .is_err());
+    assert!(client.try_set_creator_by_timelock(&creator, &true).is_err());
 }
 
 #[test]

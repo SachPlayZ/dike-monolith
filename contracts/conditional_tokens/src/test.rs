@@ -85,8 +85,6 @@ fn admin_gated_fns_reject_wrong_signer() {
     let client = DikeConditionalTokensClient::new(&env, &id);
     let other = Address::generate(&env);
     assert!(client.try_set_admin(&other).is_err());
-    assert!(client
-        .try_set_role(&symbol_short!("amm"), &other)
-        .is_err());
+    assert!(client.try_set_role(&symbol_short!("amm"), &other).is_err());
     assert!(client.try_pause(&true).is_err());
 }

@@ -207,8 +207,6 @@ fn admin_gated_fns_reject_wrong_signer() {
     assert!(client
         .try_set_role(&symbol_short!("factory"), &other)
         .is_err());
-    assert!(client
-        .try_set_supported_collateral(&other, &true)
-        .is_err());
+    assert!(client.try_set_supported_collateral(&other, &true).is_err());
     assert!(client.try_pause_system(&true).is_err());
 }

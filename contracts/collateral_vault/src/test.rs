@@ -578,7 +578,10 @@ fn failed_solvency_checks_leave_balances_and_tokens_untouched() {
         vault.try_redeem_resolved(&token, &alice, &1, &Outcome::Yes, &200),
         Err(Ok(DikeError::InsufficientCollateral))
     ));
-    assert_eq!(tokens.balance(&alice, &1, &Outcome::Yes), before_yes_balance);
+    assert_eq!(
+        tokens.balance(&alice, &1, &Outcome::Yes),
+        before_yes_balance
+    );
     assert_eq!(vault.root_stake(&1, &alice, &Outcome::Yes), 100);
     assert_eq!(vault.user_deposit(&1, &alice), 100);
     assert_eq!(stellar.balance(&alice), before_user_balance);
@@ -664,7 +667,5 @@ fn admin_gated_fns_reject_wrong_signer() {
     let client = CollateralVaultClient::new(&env, &id);
     let other = Address::generate(&env);
     assert!(client.try_set_admin(&other).is_err());
-    assert!(client
-        .try_set_role(&symbol_short!("gov"), &other)
-        .is_err());
+    assert!(client.try_set_role(&symbol_short!("gov"), &other).is_err());
 }

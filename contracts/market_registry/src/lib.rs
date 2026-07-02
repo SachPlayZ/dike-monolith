@@ -1,6 +1,8 @@
 #![no_std]
 
-use dike_types::{validate_fee_config, DikeError, FeeConfig, MarketConfig, MarketData, MarketStatus, Outcome};
+use dike_types::{
+    validate_fee_config, DikeError, FeeConfig, MarketConfig, MarketData, MarketStatus, Outcome,
+};
 use soroban_sdk::{
     contract, contractevent, contractimpl, contracttype, symbol_short, Address, Env, Symbol,
 };

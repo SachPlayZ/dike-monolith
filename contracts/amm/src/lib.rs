@@ -5,7 +5,10 @@ use dike_math::{
     average_price_bps, bps, checked_add, checked_div, checked_mul, checked_sub, proportional,
     quote_buy_complete_set, quote_sell, split_fee,
 };
-use dike_types::{validate_fee_config, DikeError, FeeConfig, MarketData, MarketStatus, Outcome, PoolData, TradeQuote};
+use dike_types::{
+    validate_fee_config, DikeError, FeeConfig, MarketData, MarketStatus, Outcome, PoolData,
+    TradeQuote,
+};
 use soroban_sdk::{
     contract, contractclient, contractevent, contractimpl, contracttype, symbol_short, Address,
     Env, Symbol,
@@ -1030,11 +1033,7 @@ impl DikeAMM {
         quote_sell_side(env, pool_id, amount_in, true)
     }
 
-    pub fn quote_sell_no(
-        env: Env,
-        pool_id: u64,
-        amount_in: i128,
-    ) -> Result<TradeQuote, DikeError> {
+    pub fn quote_sell_no(env: Env, pool_id: u64, amount_in: i128) -> Result<TradeQuote, DikeError> {
         quote_sell_side(env, pool_id, amount_in, false)
     }
 
