@@ -13,8 +13,8 @@ import {
   buildAmmBuyNo,
   buildAmmSellYes,
   buildAmmSellNo,
-  ctBalance,
 } from "@/lib/contracts/clients";
+import { fetchRawPortfolio } from "@/lib/api/portfolio";
 import { submitAndPoll, parseDikeError, feeFromXdr, formatFeeXlm } from "@/lib/stellar/transaction";
 import { parseUsdc, formatUsdc, applySlippage } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
@@ -54,18 +54,25 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
       return;
     }
     let cancelled = false;
-    Promise.allSettled([
-      ctBalance(address, address, marketId, "Yes"),
-      ctBalance(address, address, marketId, "No"),
-    ]).then(([yesRes, noRes]) => {
-      if (cancelled) return;
-      if (yesRes.status === "fulfilled" && noRes.status === "fulfilled") {
-        setBalances({ yes: yesRes.value, no: noRes.value });
+    fetchRawPortfolio(address)
+      .then((portfolio) => {
+        if (cancelled) return;
+        const yesPos = portfolio.positions.find(
+          (p) => String(p.market_id) === marketId && p.outcome === "Yes"
+        );
+        const noPos = portfolio.positions.find(
+          (p) => String(p.market_id) === marketId && p.outcome === "No"
+        );
+        setBalances({
+          yes: String(yesPos?.balance ?? "0"),
+          no: String(noPos?.balance ?? "0"),
+        });
         setBalancesError(false);
-      } else {
+      })
+      .catch(() => {
+        if (cancelled) return;
         setBalancesError(true);
-      }
-    });
+      });
     return () => {
       cancelled = true;
     };

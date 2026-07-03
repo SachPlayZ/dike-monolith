@@ -168,8 +168,11 @@ export async function submitAndPoll(
   throw new Error("Transaction not confirmed after polling timeout.");
 }
 
-// Simulate a read-only contract call and return the ScVal result.
-export async function simulateRead(
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function simulateReadOnce(
   sourceAddress: string,
   contractId: string,
   method: string,
@@ -201,4 +204,30 @@ export async function simulateRead(
     throw new Error("No return value from simulation");
   }
   return success.result.retval;
+}
+
+const READ_RETRY_DELAYS_MS = [250, 750];
+
+// Simulate a read-only contract call and return the ScVal result.
+// Pages fan out many of these concurrently on mount (a single market page
+// fires a dozen-plus), which can burst-overwhelm the public testnet RPC —
+// retry a couple times before surfacing a failure to the UI.
+export async function simulateRead(
+  sourceAddress: string,
+  contractId: string,
+  method: string,
+  args: StellarSdk.xdr.ScVal[]
+): Promise<StellarSdk.xdr.ScVal> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= READ_RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      return await simulateReadOnce(sourceAddress, contractId, method, args);
+    } catch (e) {
+      lastError = e;
+      if (attempt < READ_RETRY_DELAYS_MS.length) {
+        await sleep(READ_RETRY_DELAYS_MS[attempt]);
+      }
+    }
+  }
+  throw lastError;
 }

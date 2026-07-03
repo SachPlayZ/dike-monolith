@@ -10,9 +10,9 @@ import {
   buildAmmBuyChildYes,
   buildAmmBuyChildNo,
   vaultGetChildAvail,
-  vaultGetRootStake,
 } from "@/lib/contracts/clients";
 import { apiGet } from "@/lib/api/client";
+import { fetchRawPortfolio } from "@/lib/api/portfolio";
 import { normalizeMarketData } from "@/lib/api/normalizers";
 import { submitAndPoll, parseDikeError, feeFromXdr, formatFeeXlm } from "@/lib/stellar/transaction";
 import { parseUsdc, formatUsdc, applySlippage } from "@/lib/stellar/scval";
@@ -51,25 +51,25 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
   useEffect(() => {
     if (!expanded || !address) return;
     setMarketsLoading(true);
-    apiGet<{ items: Record<string, unknown>[] }>("/markets")
-      .then(async (res) => {
+    Promise.all([
+      apiGet<{ items: Record<string, unknown>[] }>("/markets"),
+      fetchRawPortfolio(address),
+    ])
+      .then(([res, portfolio]) => {
         const live = res.items
           .map((r) => normalizeMarketData(r))
           .filter((m) => m.status === "Live" && m.marketId !== currentMarketId);
 
-        const stakes = await Promise.all(
-          live.map((m) =>
-            Promise.all([
-              vaultGetRootStake(address, address, m.marketId, "Yes").catch(() => "0"),
-              vaultGetRootStake(address, address, m.marketId, "No").catch(() => "0"),
-            ])
-          )
+        const vaultByMarket = new Map(
+          portfolio.vaultState.map((v) => [String(v.market_id), v])
         );
 
         const stakeMap: Record<string, { yes: string; no: string }> = {};
         const held: MarketData[] = [];
-        live.forEach((m, i) => {
-          const [yes, no] = stakes[i];
+        live.forEach((m) => {
+          const vault = vaultByMarket.get(m.marketId);
+          const yes = String(vault?.root_stake_yes ?? "0");
+          const no = String(vault?.root_stake_no ?? "0");
           if (BigInt(yes) > 0n || BigInt(no) > 0n) {
             stakeMap[m.marketId] = { yes, no };
             held.push(m);

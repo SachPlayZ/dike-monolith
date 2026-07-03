@@ -390,6 +390,42 @@ export async function buildRedeemCancelled(
   );
 }
 
+// Contract: accounting(market_id: u64) -> VaultAccounting
+// Low-frequency admin-only read, fine to stay on RPC (only touched from the
+// sweep-protocol-fees panel, not on any page-mount burst).
+export async function vaultGetAccounting(
+  source: string,
+  marketId: string
+): Promise<{ protocolFees: string; codFees: string }> {
+  const val = await simulateRead(
+    source,
+    CONTRACT_IDS.collateralVault(),
+    "accounting",
+    [id(marketId)]
+  );
+  const native = fromScVal(val) as { protocol_fees?: string; cod_fees?: string };
+  return {
+    protocolFees: String(native.protocol_fees ?? "0"),
+    codFees: String(native.cod_fees ?? "0"),
+  };
+}
+
+// Contract: sweep_protocol_fees(token, market_id: u64) -> i128
+// Gated on-chain by require_role("gov") — succeeds only when signed by
+// whatever address collateral_vault has registered under that role
+// (governance_authority in this deployment).
+export async function buildSweepProtocolFees(
+  source: string,
+  marketId: string
+): Promise<string> {
+  return buildAndSimulate(
+    source,
+    CONTRACT_IDS.collateralVault(),
+    "sweep_protocol_fees",
+    [toAddress(COLLATERAL_CONTRACT), id(marketId)]
+  );
+}
+
 // Contract: user_deposit(market_id: u64, user: Address) -> i128
 export async function vaultGetUserDeposit(
   source: string,
@@ -494,6 +530,17 @@ export async function registryIsTradeable(
     [id(marketId)]
   );
   return fromBool(val);
+}
+
+// Contract: close_trading(market_id: u64) — permissionless, callable by anyone
+// once env.ledger().timestamp() >= market.expiry. Errors with NotExpired otherwise.
+export async function buildCloseTrading(
+  source: string,
+  marketId: string
+): Promise<string> {
+  return buildAndSimulate(source, CONTRACT_IDS.marketRegistry(), "close_trading", [
+    id(marketId),
+  ]);
 }
 
 export async function registryGetFinalOutcome(

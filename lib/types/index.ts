@@ -72,6 +72,7 @@ export interface MarketData {
   poolId: string | null;
   yesReserve: string;
   noReserve: string;
+  totalLpShares: string;
   createdAt: number;
 }
 

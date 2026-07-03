@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { fetchCouncilCases } from "@/lib/api/council";
 import { CaseCard } from "@/features/council/CaseCard";
 import { VoteForm } from "@/features/council/VoteForm";
+import { SweepProtocolFeesPanel } from "@/features/market/SweepProtocolFeesPanel";
 import { PageLoader } from "@/components/data-state/LoadingSpinner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { EmptyState } from "@/components/data-state/EmptyState";
@@ -64,6 +65,10 @@ export default function CouncilPage() {
           Commit and reveal votes on disputed market outcomes. Your salt is stored locally — never loses it.
         </p>
       </div>
+
+      {/* canAdmin-only; self-gated, rendered outside the canCouncil gate below
+          so admins who aren't council members can still sweep COD/treasury fees */}
+      <SweepProtocolFeesPanel />
 
       <SectionGate
         permission="canCouncil"

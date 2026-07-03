@@ -8,10 +8,9 @@ import {
   buildAmmAddLiquidity,
   buildAmmRemoveLiquidity,
   buildAmmClaimLpFees,
-  ammGetLpBalance,
   ammGetClaimableLpFees,
-  ammGetPool,
 } from "@/lib/contracts/clients";
+import { fetchRawPortfolio } from "@/lib/api/portfolio";
 import { submitAndPoll, parseDikeError, feeFromXdr, formatFeeXlm } from "@/lib/stellar/transaction";
 import { parseUsdc, formatUsdc } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
@@ -21,9 +20,12 @@ type Mode = "add" | "remove";
 
 interface LiquidityFormProps {
   poolId: string;
+  yesReserve: string;
+  noReserve: string;
+  totalLpShares: string;
 }
 
-export function LiquidityForm({ poolId }: LiquidityFormProps) {
+export function LiquidityForm({ poolId, yesReserve, noReserve, totalLpShares }: LiquidityFormProps) {
   const router = useRouter();
   const { address, isConnected, connect, sign } = useWallet();
   const [expanded, setExpanded] = useState(false);
@@ -31,9 +33,6 @@ export function LiquidityForm({ poolId }: LiquidityFormProps) {
   const [amountInput, setAmountInput] = useState("");
   const [lpBalance, setLpBalance] = useState<string | null>(null);
   const [claimableFees, setClaimableFees] = useState<string | null>(null);
-  const [lpSupply, setLpSupply] = useState<string | null>(null);
-  const [yesReserve, setYesReserve] = useState<string | null>(null);
-  const [noReserve, setNoReserve] = useState<string | null>(null);
   const [simulatedFee, setSimulatedFee] = useState<string | null>(null);
   const [txState, setTxState] = useState<TxState>({ status: "idle", hash: null, error: null });
   const [isClaiming, startClaimTransition] = useTransition();
@@ -41,36 +40,22 @@ export function LiquidityForm({ poolId }: LiquidityFormProps) {
 
   function refreshLpState() {
     if (!address) return;
-    ammGetLpBalance(address, address, poolId)
-      .then((bal) => setLpBalance(bal))
+    fetchRawPortfolio(address)
+      .then((portfolio) => {
+        const lp = portfolio.lpPositions.find((p) => String(p.pool_id) === poolId);
+        setLpBalance(String(lp?.shares ?? "0"));
+      })
       .catch(() => setLpBalance(null));
     ammGetClaimableLpFees(address, address, poolId)
       .then((fees) => setClaimableFees(fees))
       .catch(() => setClaimableFees(null));
-    ammGetPool(address, poolId)
-      .then((pool) => {
-        setLpSupply(pool.lpSupply);
-        setYesReserve(pool.yesReserve);
-        setNoReserve(pool.noReserve);
-      })
-      .catch(() => {
-        setLpSupply(null);
-        setYesReserve(null);
-        setNoReserve(null);
-      });
   }
 
   let expectedLpShares: bigint | null = null;
-  if (
-    mode === "add" &&
-    amountInput &&
-    lpSupply !== null &&
-    yesReserve !== null &&
-    noReserve !== null
-  ) {
+  if (mode === "add" && amountInput) {
     try {
       const amount = parseUsdc(amountInput);
-      const totalShares = BigInt(lpSupply);
+      const totalShares = BigInt(totalLpShares);
       const yes = BigInt(yesReserve);
       const no = BigInt(noReserve);
       if (amount > 0n && totalShares > 0n && yes > 0n && no > 0n) {

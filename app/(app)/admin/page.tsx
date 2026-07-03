@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { fetchGovernanceState, fetchTimelockActions } from "@/lib/api/admin";
 import { GovernancePanel } from "@/features/admin/GovernancePanel";
+import { SweepProtocolFeesPanel } from "@/features/market/SweepProtocolFeesPanel";
 import { PageLoader } from "@/components/data-state/LoadingSpinner";
 import { EmptyState } from "@/components/data-state/EmptyState";
 import { SectionGate } from "@/components/auth/SectionGate";
@@ -41,7 +42,12 @@ async function AdminContent() {
     return <EmptyState title="Unavailable" description={error ?? "Failed to load admin state"} />;
   }
 
-  return <GovernancePanel state={state} timelockActions={timelockActions} />;
+  return (
+    <div className="space-y-6">
+      <GovernancePanel state={state} timelockActions={timelockActions} />
+      <SweepProtocolFeesPanel />
+    </div>
+  );
 }
 
 export default function AdminPage() {

@@ -7,6 +7,7 @@ import { TradeForm } from "@/features/trading/TradeForm";
 import { LiquidityForm } from "@/features/trading/LiquidityForm";
 import { ChildTradeForm } from "@/features/trading/ChildTradeForm";
 import { UserPositionPanel } from "@/features/trading/UserPositionPanel";
+import { CloseTradingButton } from "@/features/market/CloseTradingButton";
 import { ResolutionPanel } from "@/features/resolution/ResolutionPanel";
 import { PageLoader } from "@/components/data-state/LoadingSpinner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -43,7 +44,8 @@ async function MarketDetailContent({ marketId }: { marketId: string }) {
     notFound();
   }
 
-  const isTradeable = market.status === "Live";
+  const isExpired = Date.now() / 1000 >= market.config.expiry;
+  const isTradeable = market.status === "Live" && !isExpired;
   const yesBps = impliedYesBps(market.yesReserve, market.noReserve);
   const yesPercent = yesBps / 100;
   const noPercent = 100 - yesPercent;
@@ -189,8 +191,15 @@ async function MarketDetailContent({ marketId }: { marketId: string }) {
               marketQuestion={market.config.question}
             />
             <ChildTradeForm poolId={market.poolId} currentMarketId={market.marketId} />
-            <LiquidityForm poolId={market.poolId} />
+            <LiquidityForm
+              poolId={market.poolId}
+              yesReserve={market.yesReserve}
+              noReserve={market.noReserve}
+              totalLpShares={market.totalLpShares}
+            />
           </>
+        ) : market.status === "Live" && isExpired ? (
+          <CloseTradingButton marketId={market.marketId} expiry={market.config.expiry} />
         ) : (
           <div className="rounded-2xl bg-white/[0.03] border border-white/[0.07] px-5 py-6 text-center">
             <p className="text-sm text-white/40">

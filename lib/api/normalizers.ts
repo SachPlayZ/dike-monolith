@@ -87,6 +87,7 @@ export function normalizeMarketData(row: RawRecord): MarketData {
     poolId: poolId && poolId !== "0" ? poolId : null,
     yesReserve: toStringValue(row.yes_reserve, "0"),
     noReserve: toStringValue(row.no_reserve, "0"),
+    totalLpShares: toStringValue(row.total_lp_shares, "0"),
     createdAt: toNumberValue(row.created_at_unix),
   };
 }

@@ -2,12 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useWallet } from "@/lib/contexts/wallet";
-import {
-  ammGetLpBalance,
-  ctBalance,
-  vaultGetRootStake,
-  vaultGetUserDeposit,
-} from "@/lib/contracts/clients";
+import { fetchRawPortfolio } from "@/lib/api/portfolio";
 import { formatUsdc } from "@/lib/stellar/scval";
 
 interface PositionData {
@@ -33,36 +28,50 @@ export function UserPositionPanel({ marketId, poolId }: UserPositionPanelProps) 
   useEffect(() => {
     if (!address) return;
     let cancelled = false;
-    Promise.allSettled([
-      ctBalance(address, address, marketId, "Yes"),
-      ctBalance(address, address, marketId, "No"),
-      poolId ? ammGetLpBalance(address, address, poolId) : Promise.resolve("0"),
-      vaultGetRootStake(address, address, marketId, "Yes"),
-      vaultGetRootStake(address, address, marketId, "No"),
-      vaultGetUserDeposit(address, address, marketId),
-    ]).then((results) => {
-      if (cancelled) return;
-      const failed = results.some((r) => r.status === "rejected");
-      setHasFetchError(failed);
-      const [yesBalance, noBalance, lpShares, rootStakeYes, rootStakeNo, deposit] = results.map(
-        (r) => (r.status === "fulfilled" ? r.value : "0")
-      );
-      setPosition({ yesBalance, noBalance, lpShares, rootStakeYes, rootStakeNo, deposit });
-    });
+    fetchRawPortfolio(address)
+      .then((portfolio) => {
+        if (cancelled) return;
+        setHasFetchError(false);
+        const vault = portfolio.vaultState.find((v) => String(v.market_id) === marketId);
+        const yesPos = portfolio.positions.find(
+          (p) => String(p.market_id) === marketId && p.outcome === "Yes"
+        );
+        const noPos = portfolio.positions.find(
+          (p) => String(p.market_id) === marketId && p.outcome === "No"
+        );
+        const lp = poolId
+          ? portfolio.lpPositions.find((p) => String(p.pool_id) === poolId)
+          : undefined;
+        setPosition({
+          yesBalance: String(yesPos?.balance ?? "0"),
+          noBalance: String(noPos?.balance ?? "0"),
+          lpShares: String(lp?.shares ?? "0"),
+          rootStakeYes: String(vault?.root_stake_yes ?? "0"),
+          rootStakeNo: String(vault?.root_stake_no ?? "0"),
+          deposit: String(vault?.user_deposit ?? "0"),
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setHasFetchError(true);
+      });
     return () => {
       cancelled = true;
     };
   }, [address, marketId, poolId, retryNonce]);
 
-  if (!isConnected || !position) return null;
+  if (!isConnected) return null;
+  if (!position && !hasFetchError) return null;
 
-  const hasPosition =
-    position.yesBalance !== "0" ||
-    position.noBalance !== "0" ||
-    position.lpShares !== "0" ||
-    position.rootStakeYes !== "0" ||
-    position.rootStakeNo !== "0" ||
-    position.deposit !== "0";
+  const hasPosition = Boolean(
+    position &&
+      (position.yesBalance !== "0" ||
+        position.noBalance !== "0" ||
+        position.lpShares !== "0" ||
+        position.rootStakeYes !== "0" ||
+        position.rootStakeNo !== "0" ||
+        position.deposit !== "0")
+  );
   if (!hasPosition && !hasFetchError) return null;
 
   return (
@@ -75,16 +84,16 @@ export function UserPositionPanel({ marketId, poolId }: UserPositionPanelProps) 
             onClick={() => setRetryNonce((n) => n + 1)}
             className="text-[10px] font-semibold uppercase tracking-widest text-amber-300/80 hover:text-amber-300 transition-colors duration-200"
           >
-            Some reads failed — Retry
+            Couldn&apos;t load — Retry
           </button>
         )}
       </div>
       {!hasPosition && hasFetchError && (
         <p className="px-5 py-4 text-xs text-white/40">
-          Couldn&apos;t verify your position — network reads failed.
+          Couldn&apos;t load your position — network read failed.
         </p>
       )}
-      {hasPosition && (
+      {hasPosition && position && (
       <div className="px-5 py-4 flex flex-wrap gap-2">
         {position.yesBalance !== "0" && (
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/[0.08] border border-emerald-500/[0.15]">
