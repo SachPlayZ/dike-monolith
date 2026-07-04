@@ -45,7 +45,7 @@ async function AdminContent() {
   return (
     <div className="space-y-6">
       <GovernancePanel state={state} timelockActions={timelockActions} />
-      <SweepProtocolFeesPanel />
+      <SweepProtocolFeesPanel variant="admin" />
     </div>
   );
 }

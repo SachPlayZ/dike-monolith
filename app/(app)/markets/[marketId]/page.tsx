@@ -191,21 +191,27 @@ async function MarketDetailContent({ marketId }: { marketId: string }) {
               marketQuestion={market.config.question}
             />
             <ChildTradeForm poolId={market.poolId} currentMarketId={market.marketId} />
-            <LiquidityForm
-              poolId={market.poolId}
-              yesReserve={market.yesReserve}
-              noReserve={market.noReserve}
-              totalLpShares={market.totalLpShares}
-            />
           </>
         ) : market.status === "Live" && isExpired ? (
           <CloseTradingButton marketId={market.marketId} expiry={market.config.expiry} />
-        ) : (
+        ) : !market.poolId ? (
           <div className="rounded-2xl bg-white/[0.03] border border-white/[0.07] px-5 py-6 text-center">
             <p className="text-sm text-white/40">
               Trading not available — market is <span className="text-white/60 font-medium">{market.status}</span>.
             </p>
           </div>
+        ) : null}
+        {/* Claiming accrued LP fees isn't gated by trading status on-chain
+            (claim_lp_fees has no market-status check), so this stays mounted
+            across every status, not just Live — add/remove liquidity inside
+            it still enforce their own on-chain status gates. */}
+        {market.poolId && (
+          <LiquidityForm
+            poolId={market.poolId}
+            yesReserve={market.yesReserve}
+            noReserve={market.noReserve}
+            totalLpShares={market.totalLpShares}
+          />
         )}
       </div>
     </div>

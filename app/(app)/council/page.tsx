@@ -66,15 +66,13 @@ export default function CouncilPage() {
         </p>
       </div>
 
-      {/* canAdmin-only; self-gated, rendered outside the canCouncil gate below
-          so admins who aren't council members can still sweep COD/treasury fees */}
-      <SweepProtocolFeesPanel />
-
       <SectionGate
         permission="canCouncil"
         title="council cases"
         description="Connect a council-member wallet to access commit-reveal voting."
       >
+        <SweepProtocolFeesPanel variant="council" />
+
         <Alert variant="warning">
           <AlertDescription>
             Commit-reveal voting: generate a random salt when committing, reveal it in the reveal phase. Losing your salt prevents you from revealing your vote.

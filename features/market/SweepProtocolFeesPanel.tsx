@@ -17,11 +17,17 @@ interface MarketFees {
   codFees: string;
 }
 
-// sweep_protocol_fees sweeps the treasury (protocol) + COD shares together in
-// one call — there's no way to sweep them separately, so this single panel
-// covers both. Contract-gated by require_role("gov"); shown here only to
-// canAdmin wallets as a UI convenience, not the real auth boundary.
-export function SweepProtocolFeesPanel() {
+interface SweepProtocolFeesPanelProps {
+  // sweep_protocol_fees sweeps the treasury (protocol) + COD shares together in
+  // one on-chain call — there's no way to sweep them separately. "admin" shows
+  // both amounts and the actionable Sweep button (require_role("gov") enforces
+  // the real boundary). "council" is read-only, COD-only — informational for
+  // council members who can't sweep but have a legitimate interest in seeing
+  // their share accrue.
+  variant: "admin" | "council";
+}
+
+export function SweepProtocolFeesPanel({ variant }: SweepProtocolFeesPanelProps) {
   const router = useRouter();
   const { address, isConnected, connect, sign, permissions } = useWallet();
   const [expanded, setExpanded] = useState(false);
@@ -32,7 +38,8 @@ export function SweepProtocolFeesPanel() {
   const [txState, setTxState] = useState<TxState>({ status: "idle", hash: null, error: null });
   const [isPending, startTransition] = useTransition();
 
-  if (!permissions?.canAdmin) return null;
+  const canView = variant === "admin" ? permissions?.canAdmin : permissions?.canCouncil;
+  if (!canView) return null;
 
   async function loadFees() {
     if (!address) return;
@@ -53,7 +60,13 @@ export function SweepProtocolFeesPanel() {
           };
         })
       );
-      setFees(rows.filter((r) => r.protocolFees !== "0" || r.codFees !== "0"));
+      setFees(
+        rows.filter((r) =>
+          variant === "admin"
+            ? r.protocolFees !== "0" || r.codFees !== "0"
+            : r.codFees !== "0"
+        )
+      );
     } finally {
       setLoading(false);
     }
@@ -96,9 +109,13 @@ export function SweepProtocolFeesPanel() {
       >
         <div className="text-left">
           <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/30">
-            Sweep Protocol Fees
+            {variant === "admin" ? "Sweep Protocol Fees" : "COD Fees (read-only)"}
           </p>
-          <p className="text-xs text-white/40 mt-0.5">Treasury + COD shares, per market</p>
+          <p className="text-xs text-white/40 mt-0.5">
+            {variant === "admin"
+              ? "Treasury + COD shares, per market"
+              : "Council's share of trading fees — swept by admin along with treasury"}
+          </p>
         </div>
         <span className="text-white/30 text-sm">{expanded ? "↑" : "↓"}</span>
       </button>
@@ -115,7 +132,11 @@ export function SweepProtocolFeesPanel() {
           ) : loading ? (
             <p className="text-xs text-white/30 animate-pulse">Checking accrued fees…</p>
           ) : fees.length === 0 ? (
-            <p className="text-xs text-white/40">No unswept protocol/COD fees on any market.</p>
+            <p className="text-xs text-white/40">
+              {variant === "admin"
+                ? "No unswept protocol/COD fees on any market."
+                : "No accrued COD fees on any market."}
+            </p>
           ) : (
             fees.map((f) => (
               <div
@@ -125,23 +146,27 @@ export function SweepProtocolFeesPanel() {
                 <div className="min-w-0">
                   <p className="text-xs text-white/70 truncate">{f.question}</p>
                   <p className="text-[10px] text-white/40 font-mono mt-0.5">
-                    Treasury {formatUsdc(BigInt(f.protocolFees))} · COD {formatUsdc(BigInt(f.codFees))}
+                    {variant === "admin"
+                      ? `Treasury ${formatUsdc(BigInt(f.protocolFees))} · COD ${formatUsdc(BigInt(f.codFees))}`
+                      : `COD ${formatUsdc(BigInt(f.codFees))}`}
                   </p>
                 </div>
-                <button
-                  onClick={() => handleSweep(f.marketId)}
-                  disabled={isPending && sweepingId === f.marketId}
-                  className="shrink-0 px-3 py-1.5 rounded-lg bg-orange-500/15 border border-orange-500/25 text-orange-300 text-[10px] font-bold uppercase tracking-widest hover:bg-orange-500/25 transition-all duration-200 disabled:opacity-50"
-                >
-                  {isPending && sweepingId === f.marketId ? "Sweeping…" : "Sweep"}
-                </button>
+                {variant === "admin" && (
+                  <button
+                    onClick={() => handleSweep(f.marketId)}
+                    disabled={isPending && sweepingId === f.marketId}
+                    className="shrink-0 px-3 py-1.5 rounded-lg bg-orange-500/15 border border-orange-500/25 text-orange-300 text-[10px] font-bold uppercase tracking-widest hover:bg-orange-500/25 transition-all duration-200 disabled:opacity-50"
+                  >
+                    {isPending && sweepingId === f.marketId ? "Sweeping…" : "Sweep"}
+                  </button>
+                )}
               </div>
             ))
           )}
-          {simulatedFee && (
+          {variant === "admin" && simulatedFee && (
             <p className="text-[10px] text-white/30">Simulated network fee: {simulatedFee}</p>
           )}
-          <TxStateDisplay state={txState} />
+          {variant === "admin" && <TxStateDisplay state={txState} />}
         </div>
       )}
     </div>
