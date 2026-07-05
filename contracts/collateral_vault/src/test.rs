@@ -176,8 +176,12 @@ pub struct MutableRegistry;
 #[contractimpl]
 impl MutableRegistry {
     pub fn __constructor(env: Env, collateral: Address) {
-        env.storage().instance().set(&MutKey::Collateral, &collateral);
-        env.storage().instance().set(&MutKey::Status, &MarketStatus::Live);
+        env.storage()
+            .instance()
+            .set(&MutKey::Collateral, &collateral);
+        env.storage()
+            .instance()
+            .set(&MutKey::Status, &MarketStatus::Live);
         env.storage()
             .instance()
             .set(&MutKey::FinalOutcome, &Outcome::Invalid);
@@ -188,7 +192,9 @@ impl MutableRegistry {
     }
 
     pub fn set_final_outcome(env: Env, outcome: Outcome) {
-        env.storage().instance().set(&MutKey::FinalOutcome, &outcome);
+        env.storage()
+            .instance()
+            .set(&MutKey::FinalOutcome, &outcome);
     }
 
     pub fn get_final_outcome(env: Env, _market_id: u64) -> Result<Outcome, DikeError> {
@@ -727,7 +733,10 @@ fn repay_child_collateral_restores_parent_backing_with_fresh_money() {
     assert_eq!(client.accounting(&1).child_collateral_repaid, 60);
     assert_eq!(client.child_debt(&2, &alice), 0);
     assert_eq!(client.parent_debt(&1, &alice, &Outcome::Yes), 0);
-    assert_eq!(client.child_avail_for_outcome(&1, &alice, &Outcome::Yes), 60);
+    assert_eq!(
+        client.child_avail_for_outcome(&1, &alice, &Outcome::Yes),
+        60
+    );
 }
 
 #[test]

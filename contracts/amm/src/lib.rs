@@ -709,7 +709,12 @@ fn sell(
 /// callers route proceeds through `liquidate_release`/`liquidate_child_release`
 /// instead of `release_trade_payout`, since a forced sale's proceeds settle
 /// debt first rather than paying the seller directly.
-fn force_sell(env: &Env, pool_id: u64, user: &Address, yes: bool) -> Result<(i128, i128), DikeError> {
+fn force_sell(
+    env: &Env,
+    pool_id: u64,
+    user: &Address,
+    yes: bool,
+) -> Result<(i128, i128), DikeError> {
     let mut pool = read_pool(env, pool_id)?;
     require_live(env, &pool, env.ledger().timestamp())?;
     let (vault, tokens, _collateral, _registry) = modules(env)?;
@@ -735,7 +740,12 @@ fn force_sell(env: &Env, pool_id: u64, user: &Address, yes: bool) -> Result<(i12
         &amount_in,
     );
     token_client.merge_positions(&env.current_contract_address(), &pool.market_id, &gross_out);
-    DikeVaultClient::new(env, &vault).collect_fee(&pool.market_id, &lp_fee, &treasury_fee, &cod_fee);
+    DikeVaultClient::new(env, &vault).collect_fee(
+        &pool.market_id,
+        &lp_fee,
+        &treasury_fee,
+        &cod_fee,
+    );
     if yes {
         pool.yes_reserve = checked_sub(checked_add(pool.yes_reserve, amount_in)?, gross_out)?;
         pool.no_reserve = checked_sub(pool.no_reserve, gross_out)?;

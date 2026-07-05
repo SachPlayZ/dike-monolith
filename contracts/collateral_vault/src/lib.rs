@@ -321,7 +321,12 @@ fn write_parent_outcome(env: &Env, child_market_id: u64, user: Address, outcome:
         .extend_ttl(&key, MIN_TTL, EXTEND_TTL);
 }
 
-fn read_child_markets_of(env: &Env, parent_market_id: u64, user: Address, outcome: Outcome) -> Vec<u64> {
+fn read_child_markets_of(
+    env: &Env,
+    parent_market_id: u64,
+    user: Address,
+    outcome: Outcome,
+) -> Vec<u64> {
     let key = DataKey::ChildMarketsOf(parent_market_id, user, outcome);
     if !env.storage().persistent().has(&key) {
         return Vec::new(env);
@@ -329,10 +334,19 @@ fn read_child_markets_of(env: &Env, parent_market_id: u64, user: Address, outcom
     env.storage()
         .persistent()
         .extend_ttl(&key, MIN_TTL, EXTEND_TTL);
-    env.storage().persistent().get(&key).unwrap_or_else(|| Vec::new(env))
+    env.storage()
+        .persistent()
+        .get(&key)
+        .unwrap_or_else(|| Vec::new(env))
 }
 
-fn record_child_market(env: &Env, parent_market_id: u64, user: Address, outcome: Outcome, child_market_id: u64) {
+fn record_child_market(
+    env: &Env,
+    parent_market_id: u64,
+    user: Address,
+    outcome: Outcome,
+    child_market_id: u64,
+) {
     let key = DataKey::ChildMarketsOf(parent_market_id, user.clone(), outcome);
     let mut children = read_child_markets_of(env, parent_market_id, user, outcome);
     if !children.contains(child_market_id) {
@@ -551,8 +565,10 @@ fn resolve_parent_default(
         return Ok(());
     }
     let mut parent_accounting = read_accounting(env, parent_market_id);
-    parent_accounting.child_collateral_defaulted =
-        checked_add(parent_accounting.child_collateral_defaulted, total_defaulted)?;
+    parent_accounting.child_collateral_defaulted = checked_add(
+        parent_accounting.child_collateral_defaulted,
+        total_defaulted,
+    )?;
 
     let mut reserve = read_insurance_reserve(env);
     let reserve_draw = if total_defaulted > reserve {
@@ -859,7 +875,13 @@ impl CollateralVault {
             write_parent(&env, child_market_id, user.clone(), parent_market_id);
             write_parent_outcome(&env, child_market_id, user.clone(), parent_outcome);
         }
-        record_child_market(&env, parent_market_id, user.clone(), parent_outcome, child_market_id);
+        record_child_market(
+            &env,
+            parent_market_id,
+            user.clone(),
+            parent_outcome,
+            child_market_id,
+        );
 
         // Credit is a reallocation of the parent's own real backing, not a new
         // claim conjured against the shared vault balance — without this the
@@ -1001,7 +1023,8 @@ impl CollateralVault {
         }
 
         let mut parent_accounting = read_accounting(&env, parent_market_id);
-        if parent_accounting.collateral_backing < proceeds || parent_accounting.refundable < proceeds
+        if parent_accounting.collateral_backing < proceeds
+            || parent_accounting.refundable < proceeds
         {
             return Err(DikeError::InsufficientCollateral);
         }
@@ -1033,14 +1056,32 @@ impl CollateralVault {
             &child_used_outcome_key(parent_market_id, user.clone(), parent_outcome),
         );
         if unrecovered > 0 {
-            resolve_parent_default(&env, parent_market_id, user.clone(), parent_outcome, unrecovered)?;
+            resolve_parent_default(
+                &env,
+                parent_market_id,
+                user.clone(),
+                parent_outcome,
+                unrecovered,
+            )?;
         }
 
         if bonus > 0 {
-            transfer_token(&env, &token, &env.current_contract_address(), &liquidator, bonus);
+            transfer_token(
+                &env,
+                &token,
+                &env.current_contract_address(),
+                &liquidator,
+                bonus,
+            );
         }
         if remainder > 0 {
-            transfer_token(&env, &token, &env.current_contract_address(), &user, remainder);
+            transfer_token(
+                &env,
+                &token,
+                &env.current_contract_address(),
+                &user,
+                remainder,
+            );
         }
 
         LiquidationSettled {
@@ -1111,15 +1152,33 @@ impl CollateralVault {
             let parent_market_id = read_parent(&env, child_market_id, user.clone());
             let parent_outcome = read_parent_outcome(&env, child_market_id, user.clone());
             if parent_market_id != 0 {
-                resolve_parent_default(&env, parent_market_id, user.clone(), parent_outcome, still_owed)?;
+                resolve_parent_default(
+                    &env,
+                    parent_market_id,
+                    user.clone(),
+                    parent_outcome,
+                    still_owed,
+                )?;
             }
         }
 
         if bonus > 0 {
-            transfer_token(&env, &token, &env.current_contract_address(), &liquidator, bonus);
+            transfer_token(
+                &env,
+                &token,
+                &env.current_contract_address(),
+                &liquidator,
+                bonus,
+            );
         }
         if remainder > 0 {
-            transfer_token(&env, &token, &env.current_contract_address(), &user, remainder);
+            transfer_token(
+                &env,
+                &token,
+                &env.current_contract_address(),
+                &user,
+                remainder,
+            );
         }
 
         LiquidationSettled {
@@ -1377,11 +1436,8 @@ impl CollateralVault {
                     &child_used_outcome_key(market_id, user.clone(), redeemed_outcome),
                     withheld,
                 )?;
-                let _ = saturating_sub_i128(
-                    &env,
-                    &child_used_key(market_id, user.clone()),
-                    withheld,
-                )?;
+                let _ =
+                    saturating_sub_i128(&env, &child_used_key(market_id, user.clone()), withheld)?;
                 let mut this_accounting = read_accounting(&env, market_id);
                 this_accounting.collateral_backing =
                     checked_add(this_accounting.collateral_backing, withheld)?;

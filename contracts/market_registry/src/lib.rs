@@ -4,8 +4,7 @@ use dike_types::{
     validate_fee_config, DikeError, FeeConfig, MarketConfig, MarketData, MarketStatus, Outcome,
 };
 use soroban_sdk::{
-    contract, contractevent, contractimpl, contracttype, symbol_short, Address, BytesN, Env,
-    Symbol,
+    contract, contractevent, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Symbol,
 };
 
 const MIN_TTL: u32 = 17_280;
