@@ -4,7 +4,7 @@ use dike_math::{checked_add, checked_sub};
 use dike_types::{DikeError, Outcome};
 use soroban_sdk::{
     contract, contractclient, contractevent, contractimpl, contracttype, symbol_short, Address,
-    Env, Symbol,
+    BytesN, Env, Symbol,
 };
 
 const MIN_TTL: u32 = 17_280;
@@ -63,6 +63,19 @@ pub struct PositionsMerged {
 #[contractevent(topics = ["pos_xfer"], data_format = "vec")]
 #[derive(Clone)]
 pub struct PositionTransferred {
+    #[topic]
+    pub market_id: u64,
+    #[topic]
+    pub from: Address,
+    #[topic]
+    pub to: Address,
+    pub outcome: Outcome,
+    pub amount: i128,
+}
+
+#[contractevent(topics = ["pos_fxfer"], data_format = "vec")]
+#[derive(Clone)]
+pub struct PositionForceTransferred {
     #[topic]
     pub market_id: u64,
     #[topic]
@@ -234,6 +247,12 @@ impl DikeConditionalTokens {
         Ok(())
     }
 
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), DikeError> {
+        require_admin(&env)?;
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
+        Ok(())
+    }
+
     pub fn set_role(env: Env, role: Symbol, module: Address) -> Result<(), DikeError> {
         require_admin(&env)?;
         env.storage()
@@ -344,6 +363,37 @@ impl DikeConditionalTokens {
         sub_balance(&env, market_id, from.clone(), outcome, amount)?;
         add_balance(&env, market_id, to.clone(), outcome, amount)?;
         PositionTransferred {
+            market_id,
+            from,
+            to,
+            outcome,
+            amount,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    /// Privileged variant of `transfer_position` for forced liquidation: skips
+    /// `from.require_auth()` and the vault's `assert_position_transfer_allowed`
+    /// callback (that guard exists specifically to block *voluntary* transfer
+    /// of an encumbered position — forced liquidation is the sanctioned
+    /// exception to it). Gated on the "amm" role since only the AMM's
+    /// liquidation entrypoints call this.
+    pub fn transfer_position_forced(
+        env: Env,
+        from: Address,
+        to: Address,
+        market_id: u64,
+        outcome: Outcome,
+        amount: i128,
+    ) -> Result<(), DikeError> {
+        require_role(&env, symbol_short!("amm"))?;
+        if amount <= 0 {
+            return Err(DikeError::InvalidAmount);
+        }
+        sub_balance(&env, market_id, from.clone(), outcome, amount)?;
+        add_balance(&env, market_id, to.clone(), outcome, amount)?;
+        PositionForceTransferred {
             market_id,
             from,
             to,

@@ -3,7 +3,7 @@
 use dike_types::{validate_fee_config, DikeError, FeeConfig, MarketConfig, MarketData};
 use soroban_sdk::{
     contract, contractclient, contractevent, contractimpl, contracttype,
-    token::Client as TokenClient, Address, Env,
+    token::Client as TokenClient, Address, BytesN, Env,
 };
 
 const MIN_TTL: u32 = 17_280;
@@ -239,6 +239,12 @@ impl DikeMarketFactory {
         env.storage().instance().set(&DataKey::Admin, &admin);
         AdminSet { admin }.publish(&env);
         bump(&env);
+        Ok(())
+    }
+
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), DikeError> {
+        require_admin(&env)?;
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
         Ok(())
     }
 

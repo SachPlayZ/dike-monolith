@@ -5,7 +5,7 @@ use dike_types::{
     validate_fee_config, DikeError, FeeConfig, DEFAULT_COUNCIL_BOND_SHARE_BPS,
     DEFAULT_TREASURY_BOND_SHARE_BPS, DEFAULT_WINNER_BOND_SHARE_BPS,
 };
-use soroban_sdk::{contract, contractevent, contractimpl, contracttype, Address, Env};
+use soroban_sdk::{contract, contractevent, contractimpl, contracttype, Address, BytesN, Env};
 
 const MIN_TTL: u32 = 17_280;
 const EXTEND_TTL: u32 = 518_400;
@@ -126,6 +126,12 @@ impl FeeManager {
         env.storage().instance().set(&DataKey::Admin, &admin);
         AdminSet { admin }.publish(&env);
         bump(&env);
+        Ok(())
+    }
+
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), DikeError> {
+        require_admin(&env)?;
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
         Ok(())
     }
 

@@ -11,7 +11,7 @@ use dike_types::{
 };
 use soroban_sdk::{
     contract, contractclient, contractevent, contractimpl, contracttype, symbol_short, Address,
-    Env, Symbol,
+    BytesN, Env, Symbol,
 };
 
 const MIN_TTL: u32 = 17_280;
@@ -35,6 +35,10 @@ pub enum DataKey {
 }
 
 const FEE_SCALE: i128 = 1_000_000_000_000_000_000;
+/// A position is liquidatable once its real, mark-to-market sell value drops
+/// to within 5% of the debt it's backing (i.e. sell value <= debt * 1.05).
+/// Hardcoded for now, same reasoning as the vault's bps constants.
+const LIQUIDATION_THRESHOLD_BPS: u32 = 10_500;
 
 #[contractclient(name = "DikeVaultClient")]
 pub trait DikeVault {
@@ -90,6 +94,37 @@ pub trait DikeVault {
         lp: Address,
         amount: i128,
     ) -> Result<(), DikeError>;
+
+    fn child_used_for_outcome(
+        env: Env,
+        parent_market_id: u64,
+        user: Address,
+        outcome: Outcome,
+    ) -> i128;
+
+    fn child_debt(env: Env, child_market_id: u64, user: Address) -> i128;
+
+    fn liquidate_release(
+        env: Env,
+        token: Address,
+        user: Address,
+        liquidator: Address,
+        parent_market_id: u64,
+        parent_outcome: Outcome,
+        tokens_sold: i128,
+        proceeds: i128,
+    ) -> Result<i128, DikeError>;
+
+    fn liquidate_child_release(
+        env: Env,
+        token: Address,
+        user: Address,
+        liquidator: Address,
+        child_market_id: u64,
+        child_outcome: Outcome,
+        tokens_sold: i128,
+        proceeds: i128,
+    ) -> Result<i128, DikeError>;
 }
 
 #[contractclient(name = "DikeRegistryClient")]
@@ -120,6 +155,17 @@ pub trait DikeTokens {
         env: Env,
         user: Address,
         market_id: u64,
+        amount: i128,
+    ) -> Result<(), DikeError>;
+
+    fn balance(env: Env, owner: Address, market_id: u64, outcome: Outcome) -> i128;
+
+    fn transfer_position_forced(
+        env: Env,
+        from: Address,
+        to: Address,
+        market_id: u64,
+        outcome: Outcome,
         amount: i128,
     ) -> Result<(), DikeError>;
 }
@@ -217,6 +263,19 @@ pub struct SellExecuted {
     pub yes: bool,
     pub amount_in: i128,
     pub amount_out: i128,
+}
+
+#[contractevent(topics = ["liquidate"], data_format = "vec")]
+#[derive(Clone)]
+pub struct LiquidationExecuted {
+    #[topic]
+    pub pool_id: u64,
+    #[topic]
+    pub user: Address,
+    pub liquidator: Address,
+    pub yes: bool,
+    pub tokens_sold: i128,
+    pub proceeds: i128,
 }
 
 #[contract]
@@ -641,6 +700,53 @@ fn sell(
     Ok(net_out)
 }
 
+/// Same reserve/fee math as `sell()`, but forced: sells `user`'s *entire*
+/// balance of the given outcome and moves it via `transfer_position_forced`
+/// instead of `transfer_position`, so it doesn't need the position owner's
+/// signature — only `liquidate_position`/`liquidate_child_position` call
+/// this, both of which validate liquidation eligibility before reaching here.
+/// Returns `(tokens_sold, net_proceeds)`. Does NOT touch vault accounting —
+/// callers route proceeds through `liquidate_release`/`liquidate_child_release`
+/// instead of `release_trade_payout`, since a forced sale's proceeds settle
+/// debt first rather than paying the seller directly.
+fn force_sell(env: &Env, pool_id: u64, user: &Address, yes: bool) -> Result<(i128, i128), DikeError> {
+    let mut pool = read_pool(env, pool_id)?;
+    require_live(env, &pool, env.ledger().timestamp())?;
+    let (vault, tokens, _collateral, _registry) = modules(env)?;
+    let outcome = if yes { Outcome::Yes } else { Outcome::No };
+    let token_client = DikeTokensClient::new(env, &tokens);
+    let amount_in = token_client.balance(user, &pool.market_id, &outcome);
+    if amount_in <= 0 {
+        return Err(DikeError::InsufficientBalance);
+    }
+    let fee_config = read_fee(env, pool_id);
+    let gross_out = if yes {
+        quote_sell(pool.yes_reserve, pool.no_reserve, amount_in)?
+    } else {
+        quote_sell(pool.no_reserve, pool.yes_reserve, amount_in)?
+    };
+    let (fee, net_out) = split_fee(gross_out, fee_config.trading_fee_bps)?;
+    let (lp_fee, treasury_fee, cod_fee) = accrue_fees(&mut pool, &fee_config, fee)?;
+    token_client.transfer_position_forced(
+        user,
+        &env.current_contract_address(),
+        &pool.market_id,
+        &outcome,
+        &amount_in,
+    );
+    token_client.merge_positions(&env.current_contract_address(), &pool.market_id, &gross_out);
+    DikeVaultClient::new(env, &vault).collect_fee(&pool.market_id, &lp_fee, &treasury_fee, &cod_fee);
+    if yes {
+        pool.yes_reserve = checked_sub(checked_add(pool.yes_reserve, amount_in)?, gross_out)?;
+        pool.no_reserve = checked_sub(pool.no_reserve, gross_out)?;
+    } else {
+        pool.no_reserve = checked_sub(checked_add(pool.no_reserve, amount_in)?, gross_out)?;
+        pool.yes_reserve = checked_sub(pool.yes_reserve, gross_out)?;
+    }
+    write_pool(env, &pool);
+    Ok((amount_in, net_out))
+}
+
 #[contractimpl]
 impl DikeAMM {
     pub fn __constructor(env: Env, admin: Address) {
@@ -658,6 +764,12 @@ impl DikeAMM {
         env.storage().instance().set(&DataKey::Admin, &admin);
         AdminSet { admin }.publish(&env);
         bump(&env);
+        Ok(())
+    }
+
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), DikeError> {
+        require_admin(&env)?;
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
         Ok(())
     }
 
@@ -1015,6 +1127,139 @@ impl DikeAMM {
         deadline: u64,
     ) -> Result<i128, DikeError> {
         sell(env, trader, pool_id, amount_in, min_out, deadline, false)
+    }
+
+    /// Permissionless keeper entrypoint: force-closes `user`'s entire parent-
+    /// outcome position once its real, mark-to-market sell value drops to
+    /// within 5% of the child debt it's backing (`LIQUIDATION_THRESHOLD_BPS`).
+    /// No role gate — the eligibility check below *is* the access control,
+    /// same as Aave/Compound-style liquidations. `liquidator.require_auth()`
+    /// only proves the caller wants to receive the bonus and pay the tx fee.
+    ///
+    /// `require_live` (via `force_sell`, and checked again explicitly here to
+    /// fail fast) already blocks this while the parent market is anything
+    /// other than `Live` — `Disputed`/`ResolutionRequested`/`CouncilVoting`
+    /// included, since `is_tradeable` only returns true for `Live`. A
+    /// disputed outcome can still flip on appeal, so liquidating mid-dispute
+    /// could force-close a position that would've recovered.
+    pub fn liquidate_position(
+        env: Env,
+        liquidator: Address,
+        user: Address,
+        parent_pool_id: u64,
+        parent_outcome: Outcome,
+    ) -> Result<i128, DikeError> {
+        liquidator.require_auth();
+        let pool = read_pool(&env, parent_pool_id)?;
+        require_live(&env, &pool, env.ledger().timestamp())?;
+        let (vault, tokens, collateral, _) = modules(&env)?;
+        let vault_client = DikeVaultClient::new(&env, &vault);
+
+        let debt = vault_client.child_used_for_outcome(&pool.market_id, &user, &parent_outcome);
+        if debt == 0 {
+            return Err(DikeError::InvalidInput);
+        }
+
+        let yes = parent_outcome == Outcome::Yes;
+        let token_client = DikeTokensClient::new(&env, &tokens);
+        let balance = token_client.balance(&user, &pool.market_id, &parent_outcome);
+        if balance <= 0 {
+            return Err(DikeError::InsufficientBalance);
+        }
+        let fee_config = read_fee(&env, parent_pool_id);
+        let gross_out = if yes {
+            quote_sell(pool.yes_reserve, pool.no_reserve, balance)?
+        } else {
+            quote_sell(pool.no_reserve, pool.yes_reserve, balance)?
+        };
+        let (_fee, net_out) = split_fee(gross_out, fee_config.trading_fee_bps)?;
+        let threshold = bps(debt, LIQUIDATION_THRESHOLD_BPS)?;
+        if net_out > threshold {
+            return Err(DikeError::NotLiquidatable);
+        }
+
+        let (tokens_sold, proceeds) = force_sell(&env, parent_pool_id, &user, yes)?;
+        let repaid = vault_client.liquidate_release(
+            &collateral,
+            &user,
+            &liquidator,
+            &pool.market_id,
+            &parent_outcome,
+            &tokens_sold,
+            &proceeds,
+        );
+        LiquidationExecuted {
+            pool_id: parent_pool_id,
+            user,
+            liquidator,
+            yes,
+            tokens_sold,
+            proceeds,
+        }
+        .publish(&env);
+        Ok(repaid)
+    }
+
+    /// Keeper follow-up for whatever child debt survived a parent
+    /// liquidation (or a child leg that's independently underwater relative
+    /// to its own debt) — same threshold/eligibility shape as
+    /// `liquidate_position`, targeting the child market's own pool directly.
+    pub fn liquidate_child_position(
+        env: Env,
+        liquidator: Address,
+        user: Address,
+        child_pool_id: u64,
+        child_outcome: Outcome,
+    ) -> Result<i128, DikeError> {
+        liquidator.require_auth();
+        let pool = read_pool(&env, child_pool_id)?;
+        require_live(&env, &pool, env.ledger().timestamp())?;
+        let (vault, tokens, collateral, _) = modules(&env)?;
+        let vault_client = DikeVaultClient::new(&env, &vault);
+
+        let debt = vault_client.child_debt(&pool.market_id, &user);
+        if debt == 0 {
+            return Err(DikeError::InvalidInput);
+        }
+
+        let yes = child_outcome == Outcome::Yes;
+        let token_client = DikeTokensClient::new(&env, &tokens);
+        let balance = token_client.balance(&user, &pool.market_id, &child_outcome);
+        if balance <= 0 {
+            return Err(DikeError::InsufficientBalance);
+        }
+        let fee_config = read_fee(&env, child_pool_id);
+        let gross_out = if yes {
+            quote_sell(pool.yes_reserve, pool.no_reserve, balance)?
+        } else {
+            quote_sell(pool.no_reserve, pool.yes_reserve, balance)?
+        };
+        let (_fee, net_out) = split_fee(gross_out, fee_config.trading_fee_bps)?;
+        let threshold = bps(debt, LIQUIDATION_THRESHOLD_BPS)?;
+        if net_out > threshold {
+            return Err(DikeError::NotLiquidatable);
+        }
+
+        let (tokens_sold, proceeds) = force_sell(&env, child_pool_id, &user, yes)?;
+        let repaid = vault_client.liquidate_child_release(
+            &collateral,
+            &user,
+            &liquidator,
+            &pool.market_id,
+            &child_outcome,
+            &tokens_sold,
+            &proceeds,
+        );
+        LiquidationExecuted {
+            pool_id: child_pool_id,
+            user,
+            liquidator,
+            yes,
+            tokens_sold,
+            proceeds,
+        }
+        .publish(&env);
+        Ok(repaid)
     }
 
     pub fn quote_buy_yes(env: Env, pool_id: u64, amount_in: i128) -> Result<TradeQuote, DikeError> {

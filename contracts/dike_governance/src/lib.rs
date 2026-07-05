@@ -140,6 +140,12 @@ impl DikeGovernance {
         Ok(())
     }
 
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), DikeError> {
+        require_admin(&env)?;
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
+        Ok(())
+    }
+
     /// Bootstrap-once: sets the timelock address only when it has never been
     /// set before.  Once `DataKey::Timelock` is written, subsequent calls
     /// return `Err(AlreadyInitialized)`.  Further timelock address changes

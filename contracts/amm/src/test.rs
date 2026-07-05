@@ -667,3 +667,148 @@ fn sell_quote_average_price_matches_buy_side_convention() {
     assert!(buy_quote.average_price_bps > 0 && buy_quote.average_price_bps <= 10_000);
     assert!(sell_quote.average_price_bps > 0 && sell_quote.average_price_bps <= 10_000);
 }
+
+fn setup_liquidation_env(
+    env: &Env,
+) -> (
+    Address,
+    CollateralVaultClient<'static>,
+    DikeConditionalTokensClient<'static>,
+    DikeAMMClient<'static>,
+    Address,
+) {
+    env.mock_all_auths();
+    env.ledger().set_timestamp(1);
+    let admin = Address::generate(env);
+    let factory = Address::generate(env);
+    let token_admin = Address::generate(env);
+    let token = env
+        .register_stellar_asset_contract_v2(token_admin.clone())
+        .address();
+
+    let vault_id = env.register(CollateralVault, (&admin, &admin));
+    let vault = CollateralVaultClient::new(env, &vault_id);
+    let tokens_id = env.register(DikeConditionalTokens, (&admin,));
+    let tokens = DikeConditionalTokensClient::new(env, &tokens_id);
+    let registry_id = env.register(LiveRegistry, (&token,));
+    let amm_id = env.register(DikeAMM, (&admin,));
+    let amm = DikeAMMClient::new(env, &amm_id);
+    amm.set_role(&symbol_short!("factory"), &factory);
+    vault.set_role(&symbol_short!("amm"), &amm_id);
+    vault.set_role(&symbol_short!("tokens"), &tokens_id);
+    vault.set_role(&symbol_short!("registry"), &registry_id);
+    tokens.set_role(&symbol_short!("amm"), &amm_id);
+    tokens.set_role(&symbol_short!("vault"), &vault_id);
+    amm.set_modules(&vault_id, &tokens_id, &token, &registry_id);
+    (token, vault, tokens, amm, registry_id)
+}
+
+#[test]
+fn liquidate_position_rejects_above_threshold_and_succeeds_once_underwater() {
+    let env = Env::default();
+    let (token, vault, _tokens, amm, _registry_id) = setup_liquidation_env(&env);
+    let stellar = StellarAssetClient::new(&env, &token);
+    let lp = Address::generate(&env);
+    let trader = Address::generate(&env);
+    let dumper = Address::generate(&env);
+    let liquidator = Address::generate(&env);
+    stellar.mint(&lp, &1_000_000);
+    stellar.mint(&trader, &10_000);
+    stellar.mint(&dumper, &1_000_000);
+
+    let root_pool = amm.create_pool(&1, &FeeConfig::default());
+    let child_pool = amm.create_pool(&2, &FeeConfig::default());
+    amm.seed_liquidity(&lp, &root_pool, &500_000);
+    amm.seed_liquidity(&lp, &child_pool, &500_000);
+
+    // Trader buys YES, draws the full 60% child credit against it.
+    amm.buy_yes(&trader, &root_pool, &1_000, &1, &100);
+    let avail = vault.child_avail_for_outcome(&1, &trader, &Outcome::Yes);
+    amm.buy_child_yes(&trader, &1, &Outcome::Yes, &child_pool, &avail, &1, &100);
+    let debt = vault.child_used_for_outcome(&1, &trader, &Outcome::Yes);
+    assert!(debt > 0);
+
+    // Not liquidatable yet — trader's YES position is still worth close to
+    // what they paid, comfortably above debt * 1.05.
+    assert_eq!(
+        amm.try_liquidate_position(&liquidator, &trader, &root_pool, &Outcome::Yes),
+        Err(Ok(DikeError::NotLiquidatable))
+    );
+
+    // Crash the YES price hard: a huge NO buy from an unrelated dumper.
+    amm.buy_no(&dumper, &root_pool, &400_000, &1, &100);
+
+    let liquidator_balance_before = TokenClient::new(&env, &token).balance(&liquidator);
+    let trader_balance_before = TokenClient::new(&env, &token).balance(&trader);
+
+    let repaid = amm.liquidate_position(&liquidator, &trader, &root_pool, &Outcome::Yes);
+    assert!(repaid > 0);
+    assert!(repaid <= debt);
+
+    // Keeper got paid, position was seized. Debt tracking always clears to
+    // zero afterward — whatever proceeds couldn't repay goes through
+    // resolve_parent_default (insurance/shortfall) rather than staying
+    // marked as still-owed with no position left to liquidate against.
+    assert!(TokenClient::new(&env, &token).balance(&liquidator) > liquidator_balance_before);
+    assert_eq!(vault.child_used_for_outcome(&1, &trader, &Outcome::Yes), 0);
+    assert_eq!(
+        amm.try_liquidate_position(&liquidator, &trader, &root_pool, &Outcome::Yes),
+        Err(Ok(DikeError::InvalidInput))
+    );
+    // Trader's own balance is untouched by the forced sale itself (they only
+    // get whatever remainder is left after debt+bonus, which may be zero).
+    assert!(TokenClient::new(&env, &token).balance(&trader) >= trader_balance_before);
+}
+
+#[test]
+fn liquidate_position_blocked_while_market_not_live() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(1);
+    let admin = Address::generate(&env);
+    let factory = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token = env
+        .register_stellar_asset_contract_v2(token_admin.clone())
+        .address();
+    let stellar = StellarAssetClient::new(&env, &token);
+    let lp = Address::generate(&env);
+    let trader = Address::generate(&env);
+    let liquidator = Address::generate(&env);
+    stellar.mint(&lp, &1_000_000);
+    stellar.mint(&trader, &10_000);
+
+    let vault_id = env.register(CollateralVault, (&admin, &admin));
+    let vault = CollateralVaultClient::new(&env, &vault_id);
+    let tokens_id = env.register(DikeConditionalTokens, (&admin,));
+    let tokens = DikeConditionalTokensClient::new(&env, &tokens_id);
+    let live_registry = env.register(LiveRegistry, (&token,));
+    let closed_registry = env.register(ClosedRegistry, (&token,));
+    let amm_id = env.register(DikeAMM, (&admin,));
+    let amm = DikeAMMClient::new(&env, &amm_id);
+    amm.set_role(&symbol_short!("factory"), &factory);
+    vault.set_role(&symbol_short!("amm"), &amm_id);
+    vault.set_role(&symbol_short!("tokens"), &tokens_id);
+    vault.set_role(&symbol_short!("registry"), &live_registry);
+    tokens.set_role(&symbol_short!("amm"), &amm_id);
+    tokens.set_role(&symbol_short!("vault"), &vault_id);
+    amm.set_modules(&vault_id, &tokens_id, &token, &live_registry);
+
+    let root_pool = amm.create_pool(&1, &FeeConfig::default());
+    let child_pool = amm.create_pool(&2, &FeeConfig::default());
+    amm.seed_liquidity(&lp, &root_pool, &500_000);
+    amm.seed_liquidity(&lp, &child_pool, &500_000);
+    amm.buy_yes(&trader, &root_pool, &1_000, &1, &100);
+
+    // Registry flips to a non-Live status (stands in for
+    // ResolutionRequested/Disputed/CouncilVoting — all map to
+    // is_tradeable == false the same way): liquidation must be blocked, a
+    // disputed outcome could still flip on appeal.
+    vault.set_role(&symbol_short!("registry"), &closed_registry);
+    amm.set_modules(&vault_id, &tokens_id, &token, &closed_registry);
+
+    assert_eq!(
+        amm.try_liquidate_position(&liquidator, &trader, &root_pool, &Outcome::Yes),
+        Err(Ok(DikeError::InvalidStatus))
+    );
+}

@@ -174,6 +174,10 @@ pub struct VaultAccounting {
     pub proposal_bonds: i128,
     pub dispute_bonds: i128,
     pub refundable: i128,
+    /// Known unrecoverable deficit for this market — claims that exceed real
+    /// backing after insurance-reserve absorption. Read by `capped_payout`
+    /// to pro-rata haircut redemptions instead of hard-reverting.
+    pub shortfall: i128,
 }
 
 #[contracttype]
@@ -362,4 +366,5 @@ pub enum DikeError {
     ChainDepthExceeded = 33,
     ChildCollateralLimitExceeded = 34,
     EncumberedPosition = 35,
+    NotLiquidatable = 36,
 }

@@ -172,6 +172,12 @@ impl DikeTimelock {
         Ok(())
     }
 
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), DikeError> {
+        require_address(&env, DataKey::Admin)?;
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
+        Ok(())
+    }
+
     pub fn set_roles(env: Env, proposer: Address, executor: Address) -> Result<(), DikeError> {
         require_address(&env, DataKey::Admin)?;
         env.storage().instance().set(&DataKey::Proposer, &proposer);
