@@ -195,7 +195,7 @@ function TimelockRow({ action, executable }: { action: TimelockAction; executabl
                   Connect to execute
                 </Button>
               ) : done ? (
-                <p className="text-emerald-500">Executed.</p>
+                <p className="text-green-600 dark:text-green-400">Executed.</p>
               ) : (
                 <Button
                   size="xs"

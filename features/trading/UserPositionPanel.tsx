@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { useWallet } from "@/lib/contexts/wallet";
 import { fetchRawPortfolio } from "@/lib/api/portfolio";
 import { formatUsdc } from "@/lib/stellar/scval";
+import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 interface PositionData {
   yesBalance: string;
@@ -75,82 +77,88 @@ export function UserPositionPanel({ marketId, poolId }: UserPositionPanelProps) 
   if (!hasPosition && !hasFetchError) return null;
 
   return (
-    <div className="rounded-2xl bg-white/[0.03] border border-white/[0.07] overflow-hidden animate-in fade-in-0 slide-in-from-top-2 duration-300">
-      <div className="px-5 pt-4 pb-3 border-b border-white/[0.05] flex items-center justify-between gap-2">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/30">Your Position</p>
+    <Card size="sm" className="overflow-hidden py-0">
+      <div className="px-5 pt-4 pb-3 border-b border-border flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Your Position</p>
         {hasFetchError && (
           <button
             type="button"
             onClick={() => setRetryNonce((n) => n + 1)}
-            className="text-[10px] font-semibold uppercase tracking-widest text-amber-300/80 hover:text-amber-300 transition-colors duration-200"
+            className="text-[10px] font-semibold uppercase tracking-widest text-yellow-700 dark:text-yellow-400 hover:underline transition-colors duration-200"
           >
-            Couldn&apos;t load — Retry
+            Couldn&apos;t load - Retry
           </button>
         )}
       </div>
       {!hasPosition && hasFetchError && (
-        <p className="px-5 py-4 text-xs text-white/40">
-          Couldn&apos;t load your position — network read failed.
+        <p className="px-5 py-4 text-xs text-muted-foreground">
+          Couldn&apos;t load your position - network read failed.
         </p>
       )}
       {hasPosition && position && (
       <div className="px-5 py-4 flex flex-wrap gap-2">
         {position.yesBalance !== "0" && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/[0.08] border border-emerald-500/[0.15]">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-emerald-400/70">YES</span>
-            <span className="text-sm font-semibold font-mono text-emerald-400">
-              {formatUsdc(BigInt(position.yesBalance))}
-            </span>
-          </div>
+          <PositionChip label="YES" value={formatUsdc(BigInt(position.yesBalance))} tone="green" />
         )}
         {position.noBalance !== "0" && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-rose-500/[0.08] border border-rose-500/[0.15]">
-            <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-rose-400/70">NO</span>
-            <span className="text-sm font-semibold font-mono text-rose-400">
-              {formatUsdc(BigInt(position.noBalance))}
-            </span>
-          </div>
+          <PositionChip label="NO" value={formatUsdc(BigInt(position.noBalance))} tone="red" />
         )}
         {position.lpShares !== "0" && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08]">
-            <span className="w-1.5 h-1.5 rounded-full bg-white/40 shrink-0" />
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-white/40">LP</span>
-            <span className="text-sm font-semibold font-mono text-white/70">
-              {formatUsdc(BigInt(position.lpShares))}
-            </span>
-          </div>
+          <PositionChip label="LP" value={formatUsdc(BigInt(position.lpShares))} tone="muted" />
         )}
         {position.rootStakeYes !== "0" && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/[0.08] border border-emerald-500/[0.15]">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-emerald-400/70">YES STAKE</span>
-            <span className="text-sm font-semibold font-mono text-emerald-400">
-              {formatUsdc(BigInt(position.rootStakeYes))}
-            </span>
-          </div>
+          <PositionChip label="YES STAKE" value={formatUsdc(BigInt(position.rootStakeYes))} tone="green" />
         )}
         {position.rootStakeNo !== "0" && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-rose-500/[0.08] border border-rose-500/[0.15]">
-            <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-rose-400/70">NO STAKE</span>
-            <span className="text-sm font-semibold font-mono text-rose-400">
-              {formatUsdc(BigInt(position.rootStakeNo))}
-            </span>
-          </div>
+          <PositionChip label="NO STAKE" value={formatUsdc(BigInt(position.rootStakeNo))} tone="red" />
         )}
         {position.deposit !== "0" && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08]">
-            <span className="w-1.5 h-1.5 rounded-full bg-white/40 shrink-0" />
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-white/40">DEPOSIT</span>
-            <span className="text-sm font-semibold font-mono text-white/70">
-              {formatUsdc(BigInt(position.deposit))}
-            </span>
-          </div>
+          <PositionChip label="DEPOSIT" value={formatUsdc(BigInt(position.deposit))} tone="muted" />
         )}
       </div>
       )}
+    </Card>
+  );
+}
+
+function PositionChip({ label, value, tone }: { label: string; value: string; tone: "green" | "red" | "muted" }) {
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2 px-3 py-2 rounded-md border",
+        tone === "green" && "bg-green-500/10 border-green-500/20",
+        tone === "red" && "bg-red-500/10 border-red-500/20",
+        tone === "muted" && "bg-muted/50 border-border"
+      )}
+    >
+      <span
+        className={cn(
+          "w-1.5 h-1.5 rounded-full shrink-0",
+          tone === "green" && "bg-green-500",
+          tone === "red" && "bg-red-500",
+          tone === "muted" && "bg-muted-foreground/40"
+        )}
+      />
+      <span
+        className={cn(
+          "text-[10px] font-semibold uppercase tracking-widest",
+          tone === "green" && "text-green-700 dark:text-green-400",
+          tone === "red" && "text-red-700 dark:text-red-400",
+          tone === "muted" && "text-muted-foreground"
+        )}
+      >
+        {label}
+      </span>
+      <span
+        className={cn(
+          "text-sm font-semibold font-mono",
+          tone === "green" && "text-green-700 dark:text-green-400",
+          tone === "red" && "text-red-700 dark:text-red-400",
+          tone === "muted" && "text-foreground/80"
+        )}
+      >
+        {value}
+      </span>
     </div>
   );
 }

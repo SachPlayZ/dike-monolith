@@ -2,12 +2,16 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { ChevronDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useWallet } from "@/lib/contexts/wallet";
 import { fetchMarkets } from "@/lib/api/markets";
 import { vaultGetAccounting, buildSweepProtocolFees } from "@/lib/contracts/clients";
 import { submitAndPoll, parseDikeError, feeFromXdr, formatFeeXlm } from "@/lib/stellar/transaction";
 import { formatUsdc } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import type { TxState } from "@/lib/types";
 
 interface MarketFees {
@@ -102,37 +106,32 @@ export function SweepProtocolFeesPanel({ variant }: SweepProtocolFeesPanelProps)
   }
 
   return (
-    <div className="rounded-2xl bg-white/[0.03] border border-white/[0.07] overflow-hidden">
+    <Card size="sm" className="overflow-hidden py-0">
       <button
         onClick={handleExpand}
-        className="w-full px-5 py-4 flex items-center justify-between border-b border-white/[0.05] hover:bg-white/[0.02] transition-colors duration-200"
+        className="w-full px-5 py-4 flex items-center justify-between border-b border-border hover:bg-muted/50 transition-colors duration-200"
       >
         <div className="text-left">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/30">
+          <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
             {variant === "admin" ? "Sweep Protocol Fees" : "COD Fees (read-only)"}
           </p>
-          <p className="text-xs text-white/40 mt-0.5">
+          <p className="text-xs text-muted-foreground/80 mt-0.5">
             {variant === "admin"
               ? "Treasury + COD shares, per market"
-              : "Council's share of trading fees — swept by admin along with treasury"}
+              : "Council's share of trading fees - swept by admin along with treasury"}
           </p>
         </div>
-        <span className="text-white/30 text-sm">{expanded ? "↑" : "↓"}</span>
+        <ChevronDown className={cn("size-4 text-muted-foreground transition-transform duration-200", expanded && "rotate-180")} />
       </button>
 
       {expanded && (
         <div className="p-5 space-y-3">
           {!isConnected ? (
-            <button
-              onClick={connect}
-              className="px-4 py-2 rounded-full bg-orange-500/15 border border-orange-500/25 text-orange-300 text-xs font-bold uppercase tracking-widest hover:bg-orange-500/25 transition-all duration-300"
-            >
-              Connect Wallet
-            </button>
+            <Button size="sm" onClick={connect}>Connect Wallet</Button>
           ) : loading ? (
-            <p className="text-xs text-white/30 animate-pulse">Checking accrued fees…</p>
+            <p className="text-xs text-muted-foreground animate-pulse">Checking accrued fees…</p>
           ) : fees.length === 0 ? (
-            <p className="text-xs text-white/40">
+            <p className="text-xs text-muted-foreground">
               {variant === "admin"
                 ? "No unswept protocol/COD fees on any market."
                 : "No accrued COD fees on any market."}
@@ -141,34 +140,36 @@ export function SweepProtocolFeesPanel({ variant }: SweepProtocolFeesPanelProps)
             fees.map((f) => (
               <div
                 key={f.marketId}
-                className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.07]"
+                className="flex items-center justify-between gap-3 px-4 py-3 rounded-md bg-muted/50 border border-border"
               >
                 <div className="min-w-0">
-                  <p className="text-xs text-white/70 truncate">{f.question}</p>
-                  <p className="text-[10px] text-white/40 font-mono mt-0.5">
+                  <p className="text-xs text-foreground/80 truncate">{f.question}</p>
+                  <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
                     {variant === "admin"
                       ? `Treasury ${formatUsdc(BigInt(f.protocolFees))} · COD ${formatUsdc(BigInt(f.codFees))}`
                       : `COD ${formatUsdc(BigInt(f.codFees))}`}
                   </p>
                 </div>
                 {variant === "admin" && (
-                  <button
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    className="shrink-0"
                     onClick={() => handleSweep(f.marketId)}
                     disabled={isPending && sweepingId === f.marketId}
-                    className="shrink-0 px-3 py-1.5 rounded-lg bg-orange-500/15 border border-orange-500/25 text-orange-300 text-[10px] font-bold uppercase tracking-widest hover:bg-orange-500/25 transition-all duration-200 disabled:opacity-50"
                   >
                     {isPending && sweepingId === f.marketId ? "Sweeping…" : "Sweep"}
-                  </button>
+                  </Button>
                 )}
               </div>
             ))
           )}
           {variant === "admin" && simulatedFee && (
-            <p className="text-[10px] text-white/30">Simulated network fee: {simulatedFee}</p>
+            <p className="text-[10px] text-muted-foreground">Simulated network fee: {simulatedFee}</p>
           )}
           {variant === "admin" && <TxStateDisplay state={txState} />}
         </div>
       )}
-    </div>
+    </Card>
   );
 }

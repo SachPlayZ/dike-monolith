@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import * as React from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import * as StellarSdk from "@stellar/stellar-sdk";
-import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 import { useWallet } from "@/lib/contexts/wallet";
 import {
@@ -75,6 +75,8 @@ export default function CreateMarketPage() {
   });
   const [isPending, startTransition] = useTransition();
   const [creationFee, setCreationFee] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof typeof form, string>>>({});
+  const fieldRefs = useRef<Partial<Record<keyof typeof form, HTMLElement | null>>>({});
 
   useEffect(() => {
     if (!address) return;
@@ -99,25 +101,25 @@ export default function CreateMarketPage() {
       setForm((f) => ({ ...f, [field]: e.target.value }));
   }
 
-  function validate(): string | null {
-    if (!form.question.trim()) return "Question is required";
-    if (!form.rulesUri.trim()) return "Rules URI is required";
-    if (!form.category) return "Category is required";
-    if (!form.expiry) return "Expiry is required";
+  function validate(): { field: keyof typeof form; message: string } | null {
+    if (!form.question.trim()) return { field: "question", message: "Question is required" };
+    if (!form.rulesUri.trim()) return { field: "rulesUri", message: "Rules URI is required" };
+    if (!form.category) return { field: "category", message: "Category is required" };
+    if (!form.expiry) return { field: "expiry", message: "Expiry is required" };
     const expiryTs = Math.floor(new Date(form.expiry).getTime() / 1000);
     if (expiryTs <= Math.floor(Date.now() / 1000))
-      return "Expiry must be in the future";
-    if (!form.collateral.trim()) return "Collateral address is required";
+      return { field: "expiry", message: "Expiry must be in the future" };
+    if (!form.collateral.trim()) return { field: "collateral", message: "Collateral address is required" };
     try {
       StellarSdk.Address.fromString(form.collateral.trim());
     } catch {
-      return "Collateral address must be a valid Stellar address";
+      return { field: "collateral", message: "Collateral address must be a valid Stellar address" };
     }
-    if (Number(form.bondAmount) <= 0) return "Bond amount must be positive";
+    if (Number(form.bondAmount) <= 0) return { field: "bondAmount", message: "Bond amount must be positive" };
     if (Number(form.disputeWindowHours) <= 0)
-      return "Dispute window must be positive";
+      return { field: "disputeWindowHours", message: "Dispute window must be positive" };
     if (Number(form.initialLiquidity) <= 0)
-      return "Initial liquidity must be positive";
+      return { field: "initialLiquidity", message: "Initial liquidity must be positive" };
     return null;
   }
 
@@ -125,9 +127,11 @@ export default function CreateMarketPage() {
     if (!address) return;
     const err = validate();
     if (err) {
-      setTxState({ status: "failed", hash: null, error: err });
+      setFieldErrors({ [err.field]: err.message });
+      fieldRefs.current[err.field]?.focus();
       return;
     }
+    setFieldErrors({});
 
     startTransition(async () => {
       try {
@@ -254,8 +258,13 @@ export default function CreateMarketPage() {
 
       <Card>
         <CardContent className="p-6 space-y-5">
-          <Field label="Question *">
+          <Field label="Question *" htmlFor="question" error={fieldErrors.question}>
             <Textarea
+              id="question"
+              name="question"
+              autoComplete="off"
+              ref={(el) => { fieldRefs.current.question = el; }}
+              aria-invalid={!!fieldErrors.question}
               value={form.question}
               onChange={set("question")}
               rows={2}
@@ -263,21 +272,31 @@ export default function CreateMarketPage() {
             />
           </Field>
 
-          <Field label="Rules URI *">
+          <Field label="Rules URI *" htmlFor="rulesUri" error={fieldErrors.rulesUri}>
             <Input
+              id="rulesUri"
+              name="rulesUri"
               type="url"
+              autoComplete="off"
+              ref={(el) => { fieldRefs.current.rulesUri = el; }}
+              aria-invalid={!!fieldErrors.rulesUri}
               value={form.rulesUri}
               onChange={set("rulesUri")}
               placeholder="https://…"
             />
           </Field>
 
-          <Field label="Category *">
-            <div className="flex flex-wrap gap-2">
+          <Field label="Category *" error={fieldErrors.category}>
+            <div
+              className="flex flex-wrap gap-2"
+              ref={(el) => { fieldRefs.current.category = el; }}
+              tabIndex={-1}
+            >
               {MARKET_CATEGORIES.map((category) => (
                 <button
                   key={category}
                   type="button"
+                  aria-pressed={form.category === category}
                   onClick={() =>
                     setForm((current) => ({ ...current, category }))
                   }
@@ -294,8 +313,9 @@ export default function CreateMarketPage() {
             </div>
           </Field>
 
-          <Field label="Expiry *">
+          <Field label="Expiry *" error={fieldErrors.expiry}>
             <ExpiryPicker
+              ref={(el) => { fieldRefs.current.expiry = el; }}
               value={form.expiry}
               onChange={(value) =>
                 setForm((current) => ({ ...current, expiry: value }))
@@ -303,9 +323,15 @@ export default function CreateMarketPage() {
             />
           </Field>
 
-          <Field label="Collateral Address">
+          <Field label="Collateral Address" htmlFor="collateral" error={fieldErrors.collateral}>
             <Input
+              id="collateral"
+              name="collateral"
               type="text"
+              autoComplete="off"
+              spellCheck={false}
+              ref={(el) => { fieldRefs.current.collateral = el; }}
+              aria-invalid={!!fieldErrors.collateral}
               value={form.collateral}
               onChange={set("collateral")}
               className="font-mono text-xs"
@@ -313,26 +339,44 @@ export default function CreateMarketPage() {
           </Field>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Field label="Bond (USDC)">
+            <Field label="Bond (USDC)" htmlFor="bondAmount" error={fieldErrors.bondAmount}>
               <Input
+                id="bondAmount"
+                name="bondAmount"
                 type="number"
+                autoComplete="off"
+                inputMode="decimal"
+                ref={(el) => { fieldRefs.current.bondAmount = el; }}
+                aria-invalid={!!fieldErrors.bondAmount}
                 min="0"
                 step="0.01"
                 value={form.bondAmount}
                 onChange={set("bondAmount")}
               />
             </Field>
-            <Field label="Dispute window (hours)">
+            <Field label="Dispute window (hours)" htmlFor="disputeWindowHours" error={fieldErrors.disputeWindowHours}>
               <Input
+                id="disputeWindowHours"
+                name="disputeWindowHours"
                 type="number"
+                autoComplete="off"
+                inputMode="numeric"
+                ref={(el) => { fieldRefs.current.disputeWindowHours = el; }}
+                aria-invalid={!!fieldErrors.disputeWindowHours}
                 min="1"
                 value={form.disputeWindowHours}
                 onChange={set("disputeWindowHours")}
               />
             </Field>
-            <Field label="Initial liquidity (USDC)">
+            <Field label="Initial liquidity (USDC)" htmlFor="initialLiquidity" error={fieldErrors.initialLiquidity}>
               <Input
+                id="initialLiquidity"
+                name="initialLiquidity"
                 type="number"
+                autoComplete="off"
+                inputMode="decimal"
+                ref={(el) => { fieldRefs.current.initialLiquidity = el; }}
+                aria-invalid={!!fieldErrors.initialLiquidity}
                 min="0"
                 step="0.01"
                 value={form.initialLiquidity}
@@ -374,28 +418,37 @@ export default function CreateMarketPage() {
 
 function Field({
   label,
+  htmlFor,
+  error,
   children,
 }: {
   label: string;
+  htmlFor?: string;
+  error?: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="space-y-1">
-      <Label className="text-muted-foreground font-medium normal-case tracking-normal">
+      <Label
+        htmlFor={htmlFor}
+        className="text-muted-foreground font-medium normal-case tracking-normal"
+      >
         {label}
       </Label>
       {children}
+      {error && (
+        <p role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
 
-function ExpiryPicker({
-  value,
-  onChange,
-}: {
+const ExpiryPicker = React.forwardRef<HTMLButtonElement, {
   value: string;
   onChange: (value: string) => void;
-}) {
+}>(function ExpiryPicker({ value, onChange }, ref) {
   const selectedDate = parseExpiryValue(value);
   const currentTime = value ? value.slice(11, 16) : "23:59";
 
@@ -404,6 +457,7 @@ function ExpiryPicker({
       <Popover>
         <PopoverTrigger asChild>
           <Button
+            ref={ref}
             type="button"
             variant="outline"
             className={cn(
@@ -413,7 +467,10 @@ function ExpiryPicker({
           >
             <span>
               {selectedDate
-                ? format(selectedDate, "PPP p")
+                ? new Intl.DateTimeFormat(undefined, {
+                    dateStyle: "long",
+                    timeStyle: "short",
+                  }).format(selectedDate)
                 : "Pick expiry date and time"}
             </span>
             <CalendarIcon className="size-4 opacity-70" />
@@ -438,10 +495,16 @@ function ExpiryPicker({
             />
           </div>
           <div className="border-t border-border/60 p-4">
-            <Label className="mb-2 block text-xs text-muted-foreground font-medium normal-case tracking-normal">
+            <Label
+              htmlFor="expiry-time"
+              className="mb-2 block text-xs text-muted-foreground font-medium normal-case tracking-normal"
+            >
               Time
             </Label>
             <Input
+              id="expiry-time"
+              name="expiry-time"
+              autoComplete="off"
               type="time"
               value={currentTime}
               onChange={(event) =>
@@ -458,4 +521,4 @@ function ExpiryPicker({
       </p>
     </div>
   );
-}
+});

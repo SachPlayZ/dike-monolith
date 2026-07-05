@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWallet } from "@/lib/contexts/wallet";
 import {
@@ -17,6 +18,16 @@ import { normalizeMarketData } from "@/lib/api/normalizers";
 import { submitAndPoll, parseDikeError, feeFromXdr, formatFeeXlm } from "@/lib/stellar/transaction";
 import { parseUsdc, formatUsdc, applySlippage } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { TxState, Outcome, MarketData } from "@/lib/types";
 
 interface ChildTradeFormProps {
@@ -167,15 +178,12 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
 
   if (!isConnected) {
     return (
-      <div className="rounded-2xl bg-white/[0.03] border border-white/[0.07] px-5 py-4 text-center space-y-3">
-        <p className="text-xs text-white/40">Connect wallet to use parent credit</p>
-        <button
-          onClick={connect}
-          className="px-4 py-2 rounded-full bg-orange-500/15 border border-orange-500/25 text-orange-300 text-xs font-bold uppercase tracking-widest hover:bg-orange-500/25 transition-all duration-300"
-        >
-          Connect Wallet
-        </button>
-      </div>
+      <Card size="sm">
+        <CardContent className="text-center space-y-3">
+          <p className="text-xs text-muted-foreground">Connect wallet to use parent credit</p>
+          <Button size="sm" onClick={connect}>Connect Wallet</Button>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -192,48 +200,43 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
   const canBuy = Boolean(quote && amountInput && parentMarketId && !isPending && !quoting && !exceedsCredit);
 
   return (
-    <div className="rounded-2xl bg-white/[0.03] border border-white/[0.07] overflow-hidden">
+    <Card size="sm" className="overflow-hidden py-0">
       {/* Collapsible header */}
       <button
         onClick={() => setExpanded((v) => !v)}
-        className="w-full px-5 py-4 flex items-center justify-between border-b border-white/[0.05] hover:bg-white/[0.02] transition-colors duration-200"
+        className="w-full px-5 py-4 flex items-center justify-between border-b border-border hover:bg-muted/50 transition-colors duration-200"
       >
         <div className="text-left">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/30">Buy with Parent Credit</p>
-          <p className="text-xs text-white/40 mt-0.5">Use parent stake as collateral</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Buy with Parent Credit</p>
+          <p className="text-xs text-muted-foreground/80 mt-0.5">Use parent stake as collateral</p>
         </div>
-        <span className={cn(
-          "text-white/30 text-sm transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
-          expanded && "rotate-180"
-        )}>
-          ↓
-        </span>
+        <ChevronDown className={cn("size-4 text-muted-foreground transition-transform duration-200", expanded && "rotate-180")} />
       </button>
 
       {expanded && (
-        <div className="p-5 space-y-4 animate-in fade-in-0 slide-in-from-top-2 duration-200">
+        <div className="p-5 space-y-4">
           {/* Warning */}
-          <div className="px-4 py-3 rounded-xl bg-amber-500/[0.07] border border-amber-500/[0.18] text-xs text-amber-300/80">
+          <div className="px-4 py-3 rounded-md bg-yellow-500/10 border border-yellow-500/25 text-xs text-yellow-700 dark:text-yellow-400">
             Credit encumbers your parent position. Clear child debt before selling parent.
           </div>
 
           {/* Parent market selector */}
           <div className="space-y-1.5">
-            <p className="text-[10px] uppercase tracking-[0.12em] text-white/30">Parent Market</p>
-            <div className="rounded-xl bg-white/[0.04] border border-white/[0.08] overflow-hidden">
-              <select
-                value={parentMarketId}
-                onChange={(e) => {
-                  const nextId = e.target.value;
-                  setParentMarketId(nextId);
-                  const stake = positionStakes[nextId];
-                  if (stake) {
-                    setParentOutcome(BigInt(stake.yes) > 0n ? "Yes" : "No");
-                  }
-                }}
-                className="w-full bg-transparent px-4 py-3 text-xs text-white/70 outline-none cursor-pointer [&>option]:bg-[#1a1208] [&>option]:text-white"
-              >
-                <option value="">Select a parent market…</option>
+            <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Parent Market</p>
+            <Select
+              value={parentMarketId}
+              onValueChange={(nextId) => {
+                setParentMarketId(nextId);
+                const stake = positionStakes[nextId];
+                if (stake) {
+                  setParentOutcome(BigInt(stake.yes) > 0n ? "Yes" : "No");
+                }
+              }}
+            >
+              <SelectTrigger className="w-full rounded-md border border-input bg-transparent px-4 py-3 h-auto">
+                <SelectValue placeholder="Select a parent market…" />
+              </SelectTrigger>
+              <SelectContent>
                 {markets.map((m) => {
                   const stake = positionStakes[m.marketId];
                   const worth = stake ? BigInt(stake.yes) + BigInt(stake.no) : 0n;
@@ -241,18 +244,18 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
                     ? m.config.question.slice(0, 40) + "…"
                     : m.config.question;
                   return (
-                    <option key={m.marketId} value={m.marketId}>
-                      {label} — {formatUsdc(worth)} USDC position
-                    </option>
+                    <SelectItem key={m.marketId} value={m.marketId}>
+                      {label} - {formatUsdc(worth)} USDC position
+                    </SelectItem>
                   );
                 })}
-              </select>
-            </div>
+              </SelectContent>
+            </Select>
             {marketsLoading && (
-              <p className="text-[10px] text-white/25">Checking your positions…</p>
+              <p className="text-[10px] text-muted-foreground/70">Checking your positions…</p>
             )}
             {!marketsLoading && markets.length === 0 && expanded && (
-              <p className="text-[10px] text-white/25">
+              <p className="text-[10px] text-muted-foreground/70">
                 You don&apos;t hold a position in any other live market.
               </p>
             )}
@@ -262,24 +265,26 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
             <>
               {/* Parent outcome */}
               <div className="space-y-1.5">
-                <p className="text-[10px] uppercase tracking-[0.12em] text-white/30">Encumber Outcome</p>
+                <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Encumber Outcome</p>
                 <div className="grid grid-cols-2 gap-2">
                   {(["Yes", "No"] as const).map((o) => {
                     const stake = positionStakes[parentMarketId];
                     const stakeAmount = stake ? (o === "Yes" ? stake.yes : stake.no) : "0";
                     const hasStake = BigInt(stakeAmount) > 0n;
                     return (
-                      <button
+                      <Button
                         key={o}
+                        type="button"
+                        variant="outline"
                         onClick={() => setParentOutcome(o)}
                         disabled={!hasStake}
                         className={cn(
-                          "py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all duration-300 border disabled:opacity-30 disabled:cursor-not-allowed",
+                          "h-auto py-2.5 flex-col",
                           parentOutcome === o && o === "Yes"
-                            ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-400"
+                            ? "border-green-500/40 bg-green-500/10 text-green-700 dark:text-green-400"
                             : parentOutcome === o && o === "No"
-                            ? "bg-rose-500/15 border-rose-500/40 text-rose-400"
-                            : "bg-transparent border-white/[0.06] text-white/30 hover:text-white/60"
+                            ? "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-400"
+                            : "text-muted-foreground"
                         )}
                       >
                         {o}
@@ -288,28 +293,28 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
                             {formatUsdc(BigInt(stakeAmount))} USDC
                           </span>
                         )}
-                      </button>
+                      </Button>
                     );
                   })}
                 </div>
               </div>
 
               {/* Credit display */}
-              <div className="px-4 py-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+              <div className="px-4 py-3 rounded-md bg-muted/50 border border-border">
                 {creditLoading ? (
-                  <p className="text-xs text-white/30 animate-pulse">Checking credit…</p>
+                  <p className="text-xs text-muted-foreground animate-pulse">Checking credit…</p>
                 ) : availableCredit !== null ? (
                   <div className="flex justify-between items-center">
-                    <span className="text-xs text-white/40">Available credit (60% of position)</span>
+                    <span className="text-xs text-muted-foreground">Available credit (60% of position)</span>
                     <span className={cn(
                       "text-sm font-semibold font-mono",
-                      availableCredit === "0" ? "text-amber-400" : "text-white/80"
+                      availableCredit === "0" ? "text-yellow-700 dark:text-yellow-400" : "text-foreground/80"
                     )}>
                       {formatUsdc(BigInt(availableCredit))} USDC
                     </span>
                   </div>
                 ) : (
-                  <p className="text-xs text-white/25">Select market to check credit</p>
+                  <p className="text-xs text-muted-foreground/70">Select market to check credit</p>
                 )}
               </div>
             </>
@@ -317,41 +322,40 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
 
           {/* Buy token */}
           <div className="space-y-1.5">
-            <p className="text-[10px] uppercase tracking-[0.12em] text-white/30">Buy Token</p>
+            <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Buy Token</p>
             <div className="grid grid-cols-2 gap-2">
               {(["yes", "no"] as ChildToken[]).map((t) => (
-                <button
+                <Button
                   key={t}
+                  type="button"
+                  variant="outline"
                   onClick={() => setToken(t)}
                   className={cn(
-                    "py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all duration-300 border",
+                    "h-auto py-2.5",
                     t === "yes"
                       ? token === "yes"
-                        ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-400"
-                        : "bg-transparent border-white/[0.06] text-white/30 hover:text-emerald-400/60"
+                        ? "border-green-500/40 bg-green-500/10 text-green-700 dark:text-green-400"
+                        : "text-muted-foreground"
                       : token === "no"
-                      ? "bg-rose-500/15 border-rose-500/40 text-rose-400"
-                      : "bg-transparent border-white/[0.06] text-white/30 hover:text-rose-400/60"
+                      ? "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-400"
+                      : "text-muted-foreground"
                   )}
                 >
                   {t.toUpperCase()}
-                </button>
+                </Button>
               ))}
             </div>
           </div>
 
           {/* Amount input */}
-          <div className={cn(
-            "rounded-xl border px-4 py-3.5 transition-all duration-200",
-            "bg-white/[0.04] border-white/[0.08] focus-within:border-white/[0.16] focus-within:bg-white/[0.06]"
-          )}>
+          <div className="rounded-md border border-input px-4 py-3.5 transition-colors focus-within:border-ring">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-[10px] uppercase tracking-[0.12em] text-white/30">Amount (credit units)</p>
+              <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Amount (credit units)</p>
               {availableCredit !== null && availableCredit !== "0" && (
                 <button
                   type="button"
                   onClick={() => setAmountInput(formatUsdc(BigInt(availableCredit)))}
-                  className="text-[10px] font-bold uppercase tracking-widest text-orange-300/80 hover:text-orange-300 transition-colors duration-200"
+                  className="text-[10px] font-bold uppercase tracking-widest text-primary hover:text-primary/80 transition-colors duration-200"
                 >
                   Max {formatUsdc(BigInt(availableCredit))}
                 </button>
@@ -365,61 +369,69 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
                 placeholder="0"
                 value={amountInput}
                 onChange={(e) => setAmountInput(e.target.value)}
-                className="flex-1 bg-transparent text-2xl font-semibold text-white placeholder-white/15 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none w-full min-w-0"
+                className="flex-1 bg-transparent text-2xl font-semibold text-foreground placeholder:text-muted-foreground/40 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none w-full min-w-0"
               />
-              <span className="text-sm text-white/30 shrink-0">USDC</span>
+              <span className="text-sm text-muted-foreground shrink-0">USDC</span>
             </div>
-            {quoting && <p className="text-[10px] text-white/30 mt-1.5 animate-pulse">Fetching quote…</p>}
+            {quoting && <p className="text-[10px] text-muted-foreground mt-1.5 animate-pulse">Fetching quote…</p>}
             {exceedsCredit && (
-              <p className="text-[10px] text-amber-300 mt-1.5">
+              <p className="text-[10px] text-yellow-700 dark:text-yellow-400 mt-1.5">
                 Amount exceeds available parent credit.
               </p>
             )}
           </div>
 
           {/* Quote */}
+          {quoting && !quote && (
+            <div className="rounded-md border border-border px-4 py-3 space-y-2.5">
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-2/3" />
+            </div>
+          )}
           {quote && (
-            <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 space-y-2 animate-in fade-in-0 slide-in-from-top-2 duration-300">
+            <div className="rounded-md border border-border px-4 py-3 space-y-2">
               <div className="flex justify-between text-xs">
-                <span className="text-white/35">Estimated out</span>
-                <span className="text-white/80 font-medium">{formatUsdc(BigInt(quote.amountOut))} tokens</span>
+                <span className="text-muted-foreground">Estimated out</span>
+                <span className="text-foreground font-medium">{formatUsdc(BigInt(quote.amountOut))} tokens</span>
               </div>
               <div className="flex justify-between text-xs">
-                <span className="text-white/35">Min received</span>
-                <span className="text-white/50">{formatUsdc(applySlippage(BigInt(quote.amountOut), DEFAULT_SLIPPAGE_BPS))} tokens</span>
+                <span className="text-muted-foreground">Min received</span>
+                <span className="text-muted-foreground">{formatUsdc(applySlippage(BigInt(quote.amountOut), DEFAULT_SLIPPAGE_BPS))} tokens</span>
               </div>
               <div className="flex justify-between text-xs">
-                <span className="text-white/35">Price impact</span>
-                <span className="text-white/50">{quote.priceImpactBps / 100}%</span>
+                <span className="text-muted-foreground">Price impact</span>
+                <span className="text-muted-foreground">{quote.priceImpactBps / 100}%</span>
               </div>
               {simulatedFee && (
                 <div className="flex justify-between text-xs">
-                  <span className="text-white/35">Simulated network fee</span>
-                  <span className="text-white/50">{simulatedFee}</span>
+                  <span className="text-muted-foreground">Simulated network fee</span>
+                  <span className="text-muted-foreground">{simulatedFee}</span>
                 </div>
               )}
             </div>
           )}
 
           {/* CTA */}
-          <button
+          <Button
+            className={cn(
+              "w-full h-11",
+              canBuy && token === "yes"
+                ? "bg-green-600 text-white hover:bg-green-700"
+                : canBuy && token === "no"
+                ? "bg-red-600 text-white hover:bg-red-700"
+                : ""
+            )}
+            variant={canBuy ? "default" : "outline"}
             onClick={handleBuy}
             disabled={!canBuy}
-            className={cn(
-              "w-full py-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.98]",
-              canBuy && token === "yes"
-                ? "bg-emerald-500/20 border border-emerald-500/35 text-emerald-300 hover:bg-emerald-500/30"
-                : canBuy && token === "no"
-                ? "bg-rose-500/20 border border-rose-500/35 text-rose-300 hover:bg-rose-500/30"
-                : "bg-white/[0.04] border border-white/[0.07] text-white/25 cursor-not-allowed"
-            )}
           >
             {isPending ? "Processing…" : quoting ? "Quoting…" : `Buy ${token.toUpperCase()}`}
-          </button>
+          </Button>
 
           <TxStateDisplay state={txState} />
         </div>
       )}
-    </div>
+    </Card>
   );
 }

@@ -11,6 +11,8 @@ import { CloseTradingButton } from "@/features/market/CloseTradingButton";
 import { ResolutionPanel } from "@/features/resolution/ResolutionPanel";
 import { PageLoader } from "@/components/data-state/LoadingSpinner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { ServiceUnavailableError } from "@/lib/api/client";
 import { formatUsdc, impliedYesBps } from "@/lib/stellar/scval";
 import { cn } from "@/lib/utils";
@@ -58,110 +60,110 @@ async function MarketDetailContent({ marketId }: { marketId: string }) {
       <div className="lg:col-span-2 space-y-4">
 
         {/* Market question card */}
-        <div className="rounded-2xl bg-white/[0.03] border border-white/[0.07] overflow-hidden">
-          <div className="px-6 pt-6 pb-5">
-            <div className="flex items-start gap-3 justify-between mb-4">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="px-2.5 py-1 rounded-full bg-white/[0.06] border border-white/[0.08] text-[10px] font-semibold uppercase tracking-[0.15em] text-white/50">
-                  {market.config.category}
-                </span>
-                <MarketStatusBadge status={market.status} />
-              </div>
+        <Card size="sm">
+          <CardContent>
+          <div className="flex items-start gap-3 justify-between mb-4">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge variant="secondary" className="px-2.5 py-1 bg-muted rounded-full normal-case tracking-[0.1em]">
+                {market.config.category}
+              </Badge>
+              <MarketStatusBadge status={market.status} />
             </div>
-
-            <h1 className="font-heading text-xl md:text-2xl font-normal leading-snug text-white/90 mb-5">
-              {market.config.question}
-            </h1>
-
-            {market.finalOutcome && (
-              <div className={cn(
-                "mb-5 px-4 py-3 rounded-xl border text-sm font-semibold",
-                market.finalOutcome === "Yes"
-                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-                  : market.finalOutcome === "No"
-                  ? "bg-rose-500/10 border-rose-500/30 text-rose-400"
-                  : "bg-white/[0.05] border-white/[0.10] text-white/60"
-              )}>
-                Final Outcome: {market.finalOutcome}
-              </div>
-            )}
-
-            {/* Meta grid */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {[
-                { label: "Expires", value: expiry.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) },
-                { label: "Bond", value: formatUsdc(BigInt(market.config.bondAmount)) + " USDC" },
-                { label: "Dispute window", value: `${market.config.disputeWindow / 3600}h` },
-                { label: "Collateral", value: market.config.collateral.slice(0, 8) + "…" },
-                { label: "Creator", value: market.config.creator.slice(0, 8) + "…" },
-              ].map(({ label, value }) => (
-                <div key={label} className="px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
-                  <p className="text-[10px] uppercase tracking-[0.12em] text-white/30 mb-1">{label}</p>
-                  <p className="text-xs font-medium text-white/70 font-mono">{value}</p>
-                </div>
-              ))}
-            </div>
-
-            {market.config.rulesUri && (
-              <a
-                href={market.config.rulesUri}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 mt-4 text-xs text-orange-400/80 hover:text-orange-300 transition-colors duration-200"
-              >
-                View Rules ↗
-              </a>
-            )}
           </div>
-        </div>
+
+          <h1 className="font-heading text-xl md:text-2xl font-normal leading-snug text-foreground mb-5">
+            {market.config.question}
+          </h1>
+
+          {market.finalOutcome && (
+            <div className={cn(
+              "mb-5 px-4 py-3 rounded-md border text-sm font-semibold",
+              market.finalOutcome === "Yes"
+                ? "bg-green-500/10 border-green-500/30 text-green-700 dark:text-green-400"
+                : market.finalOutcome === "No"
+                ? "bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-400"
+                : "bg-muted/50 border-border text-muted-foreground"
+            )}>
+              Final Outcome: {market.finalOutcome}
+            </div>
+          )}
+
+          {/* Meta grid */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {[
+              { label: "Expires", value: expiry.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) },
+              { label: "Bond", value: formatUsdc(BigInt(market.config.bondAmount)) + " USDC" },
+              { label: "Dispute window", value: `${market.config.disputeWindow / 3600}h` },
+              { label: "Collateral", value: market.config.collateral.slice(0, 8) + "…" },
+              { label: "Creator", value: market.config.creator.slice(0, 8) + "…" },
+            ].map(({ label, value }) => (
+              <div key={label} className="px-3 py-2.5 rounded-md bg-muted/50 border border-border">
+                <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground mb-1">{label}</p>
+                <p className="text-xs font-medium text-foreground/80 font-mono">{value}</p>
+              </div>
+            ))}
+          </div>
+
+          {market.config.rulesUri && (
+            <a
+              href={market.config.rulesUri}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 mt-4 text-xs text-primary hover:text-primary/80 transition-colors duration-200"
+            >
+              View Rules ↗
+            </a>
+          )}
+          </CardContent>
+        </Card>
 
         {/* Pool card */}
         {market.poolId && (
-          <div className="rounded-2xl bg-white/[0.03] border border-white/[0.07] overflow-hidden">
-            <div className="px-6 pt-5 pb-4 border-b border-white/[0.05]">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/30">AMM Pool</p>
+          <Card size="sm" className="overflow-hidden py-0">
+            <div className="px-6 pt-5 pb-4 border-b border-border">
+              <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">AMM Pool</h2>
             </div>
             <div className="px-6 py-5 space-y-5">
               {/* Probability bar */}
               <div className="space-y-2">
                 <div className="h-2 rounded-full overflow-hidden flex">
                   <div
-                    className="bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-1000 ease-[cubic-bezier(0.32,0.72,0,1)]"
+                    className="bg-green-500 transition-[width] duration-1000 ease-[cubic-bezier(0.32,0.72,0,1)]"
                     style={{ width: `${yesPercent}%` }}
                   />
-                  <div className="flex-1 bg-gradient-to-r from-rose-400 to-rose-600" />
+                  <div className="flex-1 bg-red-500" />
                 </div>
                 <div className="flex justify-between text-xs">
                   <div className="flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                    <span className="text-emerald-400 font-semibold">YES</span>
-                    <span className="text-white/40 font-mono">{yesPercent.toFixed(1)}¢</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                    <span className="text-green-700 dark:text-green-400 font-semibold">YES</span>
+                    <span className="text-muted-foreground font-mono">{yesPercent.toFixed(1)}¢</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-white/40 font-mono">{noPercent.toFixed(1)}¢</span>
-                    <span className="text-rose-400 font-semibold">NO</span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                    <span className="text-muted-foreground font-mono">{noPercent.toFixed(1)}¢</span>
+                    <span className="text-red-700 dark:text-red-400 font-semibold">NO</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
                   </div>
                 </div>
               </div>
 
               {/* Reserve amounts */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="px-4 py-3 rounded-xl bg-emerald-500/[0.06] border border-emerald-500/[0.12]">
-                  <p className="text-[10px] uppercase tracking-[0.12em] text-emerald-600/60 dark:text-emerald-400/50 mb-1">YES Reserve</p>
-                  <p className="text-sm font-semibold font-mono text-emerald-400">
-                    {hasReserves ? formatUsdc(BigInt(market.yesReserve)) : "—"} <span className="text-xs font-normal text-emerald-400/50">USDC</span>
+                <div className="px-4 py-3 rounded-md bg-green-500/10 border border-green-500/20">
+                  <p className="text-[10px] uppercase tracking-[0.12em] text-green-700/70 dark:text-green-400/60 mb-1">YES Reserve</p>
+                  <p className="text-sm font-semibold font-mono text-green-700 dark:text-green-400">
+                    {hasReserves ? formatUsdc(BigInt(market.yesReserve)) : "—"} <span className="text-xs font-normal opacity-70">USDC</span>
                   </p>
                 </div>
-                <div className="px-4 py-3 rounded-xl bg-rose-500/[0.06] border border-rose-500/[0.12]">
-                  <p className="text-[10px] uppercase tracking-[0.12em] text-rose-400/50 mb-1">NO Reserve</p>
-                  <p className="text-sm font-semibold font-mono text-rose-400">
-                    {hasReserves ? formatUsdc(BigInt(market.noReserve)) : "—"} <span className="text-xs font-normal text-rose-400/50">USDC</span>
+                <div className="px-4 py-3 rounded-md bg-red-500/10 border border-red-500/20">
+                  <p className="text-[10px] uppercase tracking-[0.12em] text-red-700/70 dark:text-red-400/60 mb-1">NO Reserve</p>
+                  <p className="text-sm font-semibold font-mono text-red-700 dark:text-red-400">
+                    {hasReserves ? formatUsdc(BigInt(market.noReserve)) : "—"} <span className="text-xs font-normal opacity-70">USDC</span>
                   </p>
                 </div>
               </div>
             </div>
-          </div>
+          </Card>
         )}
 
         {/* Resolution */}
@@ -169,14 +171,14 @@ async function MarketDetailContent({ marketId }: { marketId: string }) {
           market.status === "ResolutionRequested" ||
           market.status === "Proposed" ||
           market.status === "Disputed") && (
-          <div className="rounded-2xl bg-white/[0.03] border border-white/[0.07] overflow-hidden">
-            <div className="px-6 pt-5 pb-4 border-b border-white/[0.05]">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/30">Resolution</p>
+          <Card size="sm" className="overflow-hidden py-0">
+            <div className="px-6 pt-5 pb-4 border-b border-border">
+              <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Resolution</h2>
             </div>
             <div className="px-6 py-5">
               <ResolutionPanel market={market} request={resolution?.request ?? null} />
             </div>
-          </div>
+          </Card>
         )}
       </div>
 
@@ -195,11 +197,13 @@ async function MarketDetailContent({ marketId }: { marketId: string }) {
         ) : market.status === "Live" && isExpired ? (
           <CloseTradingButton marketId={market.marketId} expiry={market.config.expiry} />
         ) : !market.poolId ? (
-          <div className="rounded-2xl bg-white/[0.03] border border-white/[0.07] px-5 py-6 text-center">
-            <p className="text-sm text-white/40">
-              Trading not available — market is <span className="text-white/60 font-medium">{market.status}</span>.
-            </p>
-          </div>
+          <Card size="sm">
+            <CardContent className="text-center">
+              <p className="text-sm text-muted-foreground">
+                Trading not available - market is <span className="text-foreground/80 font-medium">{market.status}</span>.
+              </p>
+            </CardContent>
+          </Card>
         ) : null}
         {/* Claiming accrued LP fees isn't gated by trading status on-chain
             (claim_lp_fees has no market-status check), so this stays mounted
