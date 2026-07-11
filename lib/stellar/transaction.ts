@@ -90,6 +90,26 @@ export function formatFeeXlm(stroops: string | number | bigint): string {
   return fraction.length > 0 ? `${whole}.${fraction} XLM` : `${whole} XLM`;
 }
 
+// Soroban surge pricing ranks transactions by inclusion-fee-per-resource-unit. A
+// multi-contract call (e.g. create_market) has a much larger resource footprint than
+// a simple transfer, so bidding the bare network minimum (BASE_FEE, 100 stroops) can
+// lose out to smaller/cheaper transactions on every ledger until it expires — with no
+// explicit error, since the tx was validly accepted, just never picked for inclusion.
+// Testnet has near-zero competing traffic so this never surfaces there.
+const FALLBACK_INCLUSION_FEE_STROOPS = 100_000n; // 0.01 XLM
+const MAX_INCLUSION_FEE_STROOPS = 5_000_000n; // 0.5 XLM safety ceiling
+
+async function competitiveInclusionFee(rpc: StellarSdk.rpc.Server): Promise<string> {
+  try {
+    const stats = await rpc.getFeeStats();
+    const bid = BigInt(stats.sorobanInclusionFee.p99) * 10n;
+    const fee = bid > FALLBACK_INCLUSION_FEE_STROOPS ? bid : FALLBACK_INCLUSION_FEE_STROOPS;
+    return (fee > MAX_INCLUSION_FEE_STROOPS ? MAX_INCLUSION_FEE_STROOPS : fee).toString();
+  } catch {
+    return FALLBACK_INCLUSION_FEE_STROOPS.toString();
+  }
+}
+
 // Build + simulate a Soroban contract call. Returns assembled XDR ready for signing.
 export async function buildAndSimulate(
   sourceAddress: string,
@@ -100,9 +120,10 @@ export async function buildAndSimulate(
   const rpc = getRpc();
   const account = await rpc.getAccount(sourceAddress);
   const contract = new StellarSdk.Contract(contractId);
+  const fee = await competitiveInclusionFee(rpc);
 
   const tx = new StellarSdk.TransactionBuilder(account, {
-    fee: StellarSdk.BASE_FEE,
+    fee,
     networkPassphrase: networkConfig.networkPassphrase,
   })
     .addOperation(contract.call(method, ...args))
