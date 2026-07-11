@@ -1,4 +1,5 @@
 import testnetData from "./testnet.json";
+import mainnetData from "./mainnet.json";
 
 export type ContractKey =
   | "mock_usdc"
@@ -15,6 +16,7 @@ export type ContractKey =
 
 const manifests = {
   testnet: testnetData,
+  mainnet: mainnetData,
 } as const;
 
 const activeNetwork =
