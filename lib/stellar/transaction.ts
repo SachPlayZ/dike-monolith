@@ -100,13 +100,14 @@ export function formatFeeXlm(stroops: string | number | bigint): string {
 // the tx was validly accepted, just never picked for inclusion. Testnet has
 // near-zero competing traffic so this never surfaces there.
 // Stellar's own docs illustrate surge-pricing examples with per-op fees in the
-// 2-5 XLM range, so 2 XLM is the safety target here — current mainnet p99 is
-// still ~0.00002 XLM, so this only matters during a real spike. The only cost of
-// bidding this high is that the signing account must hold >= this much XLM at
-// submission time (Stellar requires balance to cover the full declared ceiling,
-// not just the eventual actual charge) — fine for wallets funding real bonds/
-// liquidity, but would need lowering if this ever signs from a near-empty wallet.
-const INCLUSION_FEE_CEILING_STROOPS = "20000000"; // 2 XLM ceiling, refunded to actual cost
+// 2-5 XLM range; 0.2 XLM trades some of that safety margin for a lower balance
+// requirement — current mainnet p99 is still ~0.00002 XLM, so this only matters
+// during a real spike. The only cost of bidding this high is that the signing
+// account must hold >= this much XLM at submission time (Stellar requires
+// balance to cover the full declared ceiling, not just the eventual actual
+// charge) — fine for wallets funding real bonds/liquidity, but would need
+// lowering if this ever signs from a near-empty wallet.
+const INCLUSION_FEE_CEILING_STROOPS = "2000000"; // 0.2 XLM ceiling, refunded to actual cost
 
 // Build + simulate a Soroban contract call. Returns assembled XDR ready for signing.
 export async function buildAndSimulate(
