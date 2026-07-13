@@ -1,23 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-NETWORK="${NETWORK:-testnet}"
-SOURCE="${SOURCE:-alice}"
+NETWORK="mainnet"
+SOURCE="${SOURCE:?set SOURCE to your mainnet deployer identity (stellar keys add <name> --secure-store), e.g. SOURCE=my-mainnet-key}"
 ADMIN="${ADMIN:-$SOURCE}"
-# Permanent admin/creator/council/treasury/gov-role address after bootstrap.
-# G-address with no known secret key here — it can NEVER be a deploy SOURCE
-# or an invoke_as signer. All bootstrap wiring below still signs as $ADMIN
-# (alice); this address is only rotated in as the final step of each contract.
-NEW_ADMIN="${NEW_ADMIN:-GAYOEII6EPU3SYBKNYEVJL36R3KVUN4UKHUWB3XTGLCLPTOWVBWZBE4G}"
-TREASURY="${TREASURY:-$NEW_ADMIN}"
+TREASURY="${TREASURY:-$ADMIN}"
 PROPOSER="${PROPOSER:-$SOURCE}"
 EXECUTOR="${EXECUTOR:-$SOURCE}"
 GOV_AUTH="${GOV_AUTH:-$SOURCE}"
-EXTRA_CREATOR="${EXTRA_CREATOR:-$NEW_ADMIN}"
-EXTRA_COUNCIL_MEMBER="${EXTRA_COUNCIL_MEMBER:-$NEW_ADMIN}"
+EXTRA_CREATOR="${EXTRA_CREATOR:-}"
+EXTRA_COUNCIL_MEMBER="${EXTRA_COUNCIL_MEMBER:-$SOURCE}"
 COLLATERAL_CONTRACT="${COLLATERAL_CONTRACT:-}"
 ASSET_CODE="${ASSET_CODE:-USDC}"
-USDC_ISSUER="${USDC_ISSUER:-}"
+# Circle's official USDC issuer on Stellar pubnet (home_domain: circle.com, verified via Horizon).
+USDC_ISSUER="${USDC_ISSUER:-GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN}"
 ALLOW_MOCK_USDC="${ALLOW_MOCK_USDC:-false}"
 DEPLOY_SAC="${DEPLOY_SAC:-false}"
 
@@ -39,13 +35,14 @@ SKIP_BUILD="${SKIP_BUILD:-false}"
 
 WASM_DIR="target/stellar"
 
+if [ "${CONFIRM_MAINNET:-}" != "yes" ]; then
+  echo "ERROR: this deploys to Stellar MAINNET with real funds. Re-run with CONFIRM_MAINNET=yes to proceed." >&2
+  exit 1
+fi
+
 if [[ "$COLLATERAL_CONTRACT" == G* ]]; then
   USDC_ISSUER="$COLLATERAL_CONTRACT"
   COLLATERAL_CONTRACT=""
-fi
-
-if [ -z "$USDC_ISSUER" ] && [ "$NETWORK" = "testnet" ]; then
-  USDC_ISSUER="GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
 fi
 
 if [ -z "$COLLATERAL_CONTRACT" ] && [ -z "$USDC_ISSUER" ] && [ "$ALLOW_MOCK_USDC" != "true" ]; then
@@ -62,17 +59,10 @@ else
   stellar contract build --optimize --out-dir "$WASM_DIR"
 fi
 
-echo "==> Funding $SOURCE on $NETWORK if needed"
-stellar keys fund "$SOURCE" --network "$NETWORK" >/dev/null || true
-for signer in "$ADMIN" "$PROPOSER" "$EXECUTOR" "$GOV_AUTH"; do
-  stellar keys fund "$signer" --network "$NETWORK" >/dev/null || true
+echo "==> Deploying as $SOURCE on $NETWORK (no friendbot on mainnet — fund these keys manually before running):"
+for signer in "$SOURCE" "$ADMIN" "$PROPOSER" "$EXECUTOR" "$GOV_AUTH"; do
+  echo "  $signer -> $(stellar keys address "$signer")"
 done
-
-echo "==> Funding NEW_ADMIN ($NEW_ADMIN) via friendbot if needed"
-if [ "$NETWORK" = "testnet" ]; then
-  curl -fsS "https://friendbot.stellar.org/?addr=$NEW_ADMIN" >/dev/null \
-    || echo "  (friendbot funding for NEW_ADMIN failed or already funded, continuing)"
-fi
 
 deploy() {
   local name="$1"
@@ -166,7 +156,12 @@ fi
 
 TIMELOCK="$(deploy dike-timelock "$WASM_DIR/dike_timelock.wasm" --admin "$ADMIN" --proposer "$PROPOSER" --executor "$EXECUTOR" --min-delay "$MIN_DELAY" --grace-period "$GRACE_PERIOD")"
 GOVERNANCE="$(deploy dike-governance "$WASM_DIR/dike_governance.wasm" --admin "$ADMIN" --treasury "$TREASURY")"
-invoke_as "$ADMIN" "$GOVERNANCE" set_timelock --timelock "$TIMELOCK"
+CURRENT_TIMELOCK="$(stellar contract invoke --source "$ADMIN" --network "$NETWORK" --id "$GOVERNANCE" -- timelock 2>/dev/null | tr -d '"')"
+if [ "$CURRENT_TIMELOCK" != "$TIMELOCK" ]; then
+  invoke_as "$ADMIN" "$GOVERNANCE" set_timelock --timelock "$TIMELOCK"
+else
+  echo "==> Timelock already set on governance, skipping" >&2
+fi
 REGISTRY="$(deploy market-registry "$WASM_DIR/market_registry.wasm" --admin "$ADMIN")"
 TOKENS="$(deploy conditional-tokens "$WASM_DIR/conditional_tokens.wasm" --admin "$ADMIN")"
 VAULT="$(deploy collateral-vault "$WASM_DIR/collateral_vault.wasm" --admin "$ADMIN" --treasury "$TREASURY")"
@@ -179,9 +174,9 @@ ORACLE="$(deploy cod-oracle "$WASM_DIR/cod_oracle.wasm" --admin "$ADMIN")"
 COUNCIL="$(deploy council-of-dike "$WASM_DIR/council_of_dike.wasm" --admin "$ADMIN")"
 # --governance here is an EOA (not the governance contract): factory's
 # require_governance() does a direct require_auth() on the stored address, so
-# for the single-EOA testnet model this must be a signable key ($GOV_AUTH),
-# not the dike-governance contract address (unlike fee_manager above, which
-# uses require_timelock() and needs the real contract).
+# for the single-EOA model this must be a signable key ($GOV_AUTH), not the
+# dike-governance contract address (unlike fee_manager above, which uses
+# require_timelock() and needs the real contract).
 FACTORY="$(deploy market-factory "$WASM_DIR/market_factory.wasm" --admin "$ADMIN" --governance "$GOV_AUTH" --min-liquidity "$MIN_LIQUIDITY" --min-expiry-duration "$MIN_EXPIRY_DURATION")"
 
 echo "==> Wiring module roles"
@@ -224,40 +219,18 @@ if [ -n "$EXTRA_COUNCIL_MEMBER" ]; then
   invoke_as "$GOV_AUTH" "$COUNCIL" set_member --member "$EXTRA_COUNCIL_MEMBER" --approved true
 fi
 
-if [ "$NEW_ADMIN" != "$ADMIN" ]; then
-  echo "==> Rotating factory governance pointer to $NEW_ADMIN"
-  invoke_as "$ADMIN" "$FACTORY" set_governance --governance "$NEW_ADMIN"
-
-  echo "==> Rotating 'gov' role to $NEW_ADMIN"
-  invoke_as "$ADMIN" "$REGISTRY" set_role --role gov --module "$NEW_ADMIN"
-  invoke_as "$ADMIN" "$VAULT"    set_role --role gov --module "$NEW_ADMIN"
-  invoke_as "$ADMIN" "$AMM"      set_role --role gov --module "$NEW_ADMIN"
-  invoke_as "$ADMIN" "$ORACLE"   set_role --role gov --module "$NEW_ADMIN"
-  invoke_as "$ADMIN" "$COUNCIL"  set_role --role gov --module "$NEW_ADMIN"
-
-  echo "==> Rotating stored admin to $NEW_ADMIN on every contract (alice loses admin after this — do this last)"
-  if [ -n "$MOCK_USDC" ]; then
-    invoke_as "$ADMIN" "$MOCK_USDC" set_admin --admin "$NEW_ADMIN"
-  fi
-  invoke_as "$ADMIN" "$TIMELOCK"    set_admin --admin "$NEW_ADMIN"
-  invoke_as "$ADMIN" "$GOVERNANCE"  set_admin --admin "$NEW_ADMIN"
-  invoke_as "$ADMIN" "$REGISTRY"    set_admin --admin "$NEW_ADMIN"
-  invoke_as "$ADMIN" "$TOKENS"      set_admin --admin "$NEW_ADMIN"
-  invoke_as "$ADMIN" "$VAULT"       set_admin --admin "$NEW_ADMIN"
-  invoke_as "$ADMIN" "$AMM"         set_admin --admin "$NEW_ADMIN"
-  invoke_as "$ADMIN" "$FEE_MANAGER" set_admin --admin "$NEW_ADMIN"
-  invoke_as "$ADMIN" "$ORACLE"      set_admin --admin "$NEW_ADMIN"
-  invoke_as "$ADMIN" "$COUNCIL"     set_admin --admin "$NEW_ADMIN"
-  invoke_as "$ADMIN" "$FACTORY"     set_admin --admin "$NEW_ADMIN"
-fi
+SOURCE_ADDR="$(stellar keys address "$SOURCE")"
+ADMIN_ADDR="$(stellar keys address "$ADMIN")"
+TREASURY_ADDR="$(stellar keys address "$TREASURY")"
+GOV_AUTH_ADDR="$(stellar keys address "$GOV_AUTH")"
 
 cat > "$MANIFEST" <<JSON
 {
   "network": "$NETWORK",
-  "source": "$SOURCE",
-  "admin": "$NEW_ADMIN",
-  "treasury": "$TREASURY",
-  "governance_authority": "$NEW_ADMIN",
+  "source": "$SOURCE_ADDR",
+  "admin": "$ADMIN_ADDR",
+  "treasury": "$TREASURY_ADDR",
+  "governance_authority": "$GOV_AUTH_ADDR",
   "collateral_contract": "$COLLATERAL_CONTRACT",
   "asset_code": "$ASSET_CODE",
   "usdc_issuer": "$USDC_ISSUER",

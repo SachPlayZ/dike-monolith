@@ -3,7 +3,7 @@
 ![Rust](https://img.shields.io/badge/Rust-2021-b7410e?style=flat-square&logo=rust)
 ![Soroban SDK](https://img.shields.io/badge/Soroban%20SDK-23-7d5fff?style=flat-square)
 ![Stellar](https://img.shields.io/badge/Stellar-Soroban-111827?style=flat-square)
-![Status](https://img.shields.io/badge/status-testnet%20ready-f59e0b?style=flat-square)
+![Status](https://img.shields.io/badge/status-live%20on%20mainnet-16a34a?style=flat-square)
 
 Smart contracts for **Dike Protocol**, a modular binary prediction-market system on Stellar Soroban.
 
@@ -198,6 +198,37 @@ Wiring verified on-chain: registry and factory support the USDC SAC above; AMM p
 
 > [!NOTE]
 > Every module now exposes `set_admin(new_admin)`, gated by the *current* admin's `require_auth` (not the new admin's) — so admin can be rotated to a cold/multisig address post-deploy without that address ever signing during setup.
+
+### Current Mainnet Deployment
+
+Manifest: [`deployments/mainnet.json`](deployments/mainnet.json)
+
+| Field | Value |
+| --- | --- |
+| Network | Mainnet (Public Global Stellar Network) |
+| Deploy source / Admin / Treasury / Governance authority | `mainnet-deployer` [`GD3AXBA2SN4NY3534UY2V2B24L4NW6PFLJ6XGGLT24KEVV22TSFXMKZS`](https://stellar.expert/explorer/public/account/GD3AXBA2SN4NY3534UY2V2B24L4NW6PFLJ6XGGLT24KEVV22TSFXMKZS) |
+| Approved creator | [`GD3AXBA2SN4NY3534UY2V2B24L4NW6PFLJ6XGGLT24KEVV22TSFXMKZS`](https://stellar.expert/explorer/public/account/GD3AXBA2SN4NY3534UY2V2B24L4NW6PFLJ6XGGLT24KEVV22TSFXMKZS) |
+| Council member | [`GD3AXBA2SN4NY3534UY2V2B24L4NW6PFLJ6XGGLT24KEVV22TSFXMKZS`](https://stellar.expert/explorer/public/account/GD3AXBA2SN4NY3534UY2V2B24L4NW6PFLJ6XGGLT24KEVV22TSFXMKZS) |
+| Collateral | Circle USDC Stellar Asset Contract |
+| USDC issuer | [`GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN`](https://stellar.expert/explorer/public/account/GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN) (circle.com) |
+| USDC SAC | [`CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75`](https://stellar.expert/explorer/public/contract/CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75) |
+| Mock USDC | Not deployed on mainnet |
+
+| Module | Contract ID |
+| --- | --- |
+| DikeTimelock | [`CDVI736RDMJRREDKT5H5QPV4XSPDC73WDSTFTJKUYJSIENUDAMT47UUZ`](https://stellar.expert/explorer/public/contract/CDVI736RDMJRREDKT5H5QPV4XSPDC73WDSTFTJKUYJSIENUDAMT47UUZ) |
+| DikeGovernance | [`CATDOYPGILMCIBVI6GRYVQ4KE6KSSAQPQN4OTFIAYKXBT2WFCGBASATJ`](https://stellar.expert/explorer/public/contract/CATDOYPGILMCIBVI6GRYVQ4KE6KSSAQPQN4OTFIAYKXBT2WFCGBASATJ) |
+| DikeMarketRegistry | [`CDGQY6NVOCIG2VVNYGD4DIJA2KTATDKWK4D2VEAW77ZMOBPGLRWDZJ4O`](https://stellar.expert/explorer/public/contract/CDGQY6NVOCIG2VVNYGD4DIJA2KTATDKWK4D2VEAW77ZMOBPGLRWDZJ4O) |
+| DikeConditionalTokens | [`CC5XBGMLJOJLIC6MXLWIJEPZPZYGCAJAGPQMGQJQO6NUC5BU3FYRQEPA`](https://stellar.expert/explorer/public/contract/CC5XBGMLJOJLIC6MXLWIJEPZPZYGCAJAGPQMGQJQO6NUC5BU3FYRQEPA) |
+| CollateralVault | [`CBOJQMXGM3YEMYHVYYJCGTOICDYAHZPYMNRA5S22IUZ32DEHT4QPE6LO`](https://stellar.expert/explorer/public/contract/CBOJQMXGM3YEMYHVYYJCGTOICDYAHZPYMNRA5S22IUZ32DEHT4QPE6LO) |
+| DikeAMM | [`CAHRXX47RAUPP6INARDFCVHQ26MLXS3AJPCXBYSKZANIYEDARG75MUBJ`](https://stellar.expert/explorer/public/contract/CAHRXX47RAUPP6INARDFCVHQ26MLXS3AJPCXBYSKZANIYEDARG75MUBJ) |
+| FeeManager | [`CDSEJLVJTCDW4WTDHQZDLDFD6QY5B7HRVFGOKQHV3XVO7U6PK5L442OV`](https://stellar.expert/explorer/public/contract/CDSEJLVJTCDW4WTDHQZDLDFD6QY5B7HRVFGOKQHV3XVO7U6PK5L442OV) |
+| CODOracle | [`CCDW3KT6AMFBLPTQWRK7QR6T6537JQKPRHBPKCHORQDJEHQQNWINWI5M`](https://stellar.expert/explorer/public/contract/CCDW3KT6AMFBLPTQWRK7QR6T6537JQKPRHBPKCHORQDJEHQQNWINWI5M) |
+| CouncilOfDike | [`CBZJWMUZ26FSPVLA6MCFIPJU64LXONQGMRIMSGSBYGD7HFAPQX3EICM4`](https://stellar.expert/explorer/public/contract/CBZJWMUZ26FSPVLA6MCFIPJU64LXONQGMRIMSGSBYGD7HFAPQX3EICM4) |
+| DikeMarketFactory | [`CDHHEZGWT7KAK6AIESV2VZVUB6ET7ZFKCTZ2442UTUML4GO6OJLG6ICC`](https://stellar.expert/explorer/public/contract/CDHHEZGWT7KAK6AIESV2VZVUB6ET7ZFKCTZ2442UTUML4GO6OJLG6ICC) |
+
+> [!WARNING]
+> `mainnet-deployer` holds admin, governance authority, sole approved creator, and council membership directly (no timelock-only rotation performed after deploy, unlike the testnet flow). Losing or leaking this key means losing or compromising control of the entire live protocol. Secure it accordingly (hardware key/vault) before any real liquidity is added.
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full runbook.
 
