@@ -14,7 +14,7 @@ Wallet (Freighter) ──sign──► lib/stellar/transaction.ts ──submit�
         ▲                            │
         │                    lib/contracts/clients.ts (hand-rolled XDR encode)
         │                            │
-   lib/contexts/wallet.tsx    lib/contracts/manifest.ts ──► testnet.json (contract IDs)
+   lib/contexts/wallet.tsx    lib/contracts/manifest.ts ──► testnet.json / mainnet.json (contract IDs)
         │
    features/*  ◄──reads──  lib/api/client.ts ──► /api/proxy/* ──► dike-services REST API
 ```
@@ -57,9 +57,9 @@ Requires a running `dike-services` instance (defaults to `http://localhost:4000`
 | `NEXT_PUBLIC_STELLAR_HORIZON_URL` | Horizon endpoint |
 | `NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE` | Must match the configured network |
 | `NEXT_PUBLIC_DIKE_SERVICES_URL` | `dike-services` base URL, proxied at `/api/proxy/*` |
-| `NEXT_PUBLIC_DIKE_MANIFEST_NETWORK` | Which key of `lib/contracts/testnet.json` to read contract IDs from |
+| `NEXT_PUBLIC_DIKE_MANIFEST_NETWORK` | `testnet` or `mainnet` — selects which manifest `lib/contracts/manifest.ts` reads contract IDs from |
 
-Contract IDs come from `lib/contracts/testnet.json`, a copy of `dike-contracts/deployments/<network>.json`. Keep it in sync manually after any contract redeploy — there is no build-time fetch or symlink.
+Contract IDs come from `lib/contracts/testnet.json` and `lib/contracts/mainnet.json`, copies of `dike-contracts/deployments/<network>.json`. Keep them in sync manually after any contract redeploy — there is no build-time fetch or symlink.
 
 ## Project Structure
 
@@ -84,4 +84,4 @@ No automated UI test suite — verify trading/liquidity/resolution/council/gover
 
 ## Deployment
 
-No CI workflow in this repo; deploys are driven by the hosting platform's git integration on push. Set the `NEXT_PUBLIC_*` variables above in the hosting environment, matching whichever network's manifest `lib/contracts/testnet.json` reflects.
+No CI workflow in this repo; deploys are driven by the hosting platform's git integration on push. Set the `NEXT_PUBLIC_*` variables above in the hosting environment, matching whichever network's manifest (`testnet.json` or `mainnet.json`) you're targeting.
