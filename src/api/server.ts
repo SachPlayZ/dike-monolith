@@ -98,6 +98,7 @@ export async function buildApp() {
     const path = request.routeOptions.url;
     const needsAdminAuth =
       path === "/metrics" ||
+      path === "/admin/stats" ||
       path === "/admin/governance" ||
       path === "/admin/timelock";
 
@@ -124,6 +125,11 @@ export async function buildApp() {
 
   app.get("/metrics", async (_, reply) => {
     sendJson(reply, services.metrics.snapshot());
+  });
+
+  app.get("/admin/stats", async (_, reply) => {
+    const stats = await services.repository.getStats(services.manifest.data.network);
+    sendJson(reply, stats);
   });
 
   app.get("/markets", async (request, reply) => {

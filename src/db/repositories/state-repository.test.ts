@@ -46,4 +46,58 @@ describe("StateRepository", () => {
     expect(sql).not.toContain("GREATEST");
     expect(params).toEqual(["testnet", "CCONTRACT", 100]);
   });
+
+  it("builds private stats from unique participants and indexed transactions", async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ count: "3" }], rowCount: 1 })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            tx_hash: "tx-2",
+            ledger: "102",
+            topics: ["buy", "transfer"],
+            event_count: "2",
+            created_at: "2026-07-18T10:00:00.000Z",
+          },
+          {
+            tx_hash: "tx-1",
+            ledger: "101",
+            topics: ["mkt_new"],
+            event_count: "1",
+            created_at: "2026-07-18T09:00:00.000Z",
+          },
+        ],
+        rowCount: 2,
+      });
+    const repository = new StateRepository({ query } as never);
+
+    const stats = await repository.getStats("testnet");
+
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(query.mock.calls[0]?.[0]).toContain("participant_wallets");
+    expect(query.mock.calls[1]?.[0]).toContain("GROUP BY tx_hash");
+    expect(query.mock.calls[0]?.[1]).toEqual(["testnet"]);
+    expect(query.mock.calls[1]?.[1]).toEqual(["testnet"]);
+    expect(stats).toEqual({
+      connectedWallets: 83,
+      indexedWallets: 3,
+      transactionCount: 2,
+      transactions: [
+        {
+          hash: "tx-2",
+          ledger: "102",
+          topics: ["buy", "transfer"],
+          eventCount: 2,
+          createdAt: "2026-07-18T10:00:00.000Z",
+        },
+        {
+          hash: "tx-1",
+          ledger: "101",
+          topics: ["mkt_new"],
+          eventCount: 1,
+          createdAt: "2026-07-18T09:00:00.000Z",
+        },
+      ],
+    });
+  });
 });

@@ -565,6 +565,62 @@ export class StateRepository {
     );
   }
 
+  async getStats(network: string) {
+    const [wallets, transactions] = await Promise.all([
+      this.pool.query<{ count: string }>(
+        `WITH participant_wallets AS (
+           SELECT creator AS address FROM markets WHERE network = $1
+           UNION SELECT trader FROM trades WHERE network = $1
+           UNION SELECT lp FROM liquidity_events WHERE network = $1
+           UNION SELECT owner FROM user_positions WHERE network = $1
+           UNION SELECT owner FROM lp_positions WHERE network = $1
+           UNION SELECT owner FROM user_vault_state WHERE network = $1
+           UNION SELECT proposer FROM resolution_requests WHERE network = $1
+           UNION SELECT disputer FROM resolution_requests WHERE network = $1
+           UNION SELECT proposer FROM council_cases WHERE network = $1
+           UNION SELECT disputer FROM council_cases WHERE network = $1
+           UNION SELECT voter FROM council_votes WHERE network = $1
+         )
+         SELECT COUNT(*)::text AS count
+         FROM participant_wallets
+         WHERE address IS NOT NULL AND address <> ''`,
+        [network],
+      ),
+      this.pool.query<{
+        tx_hash: string;
+        ledger: string;
+        topics: string[];
+        event_count: string;
+        created_at: Date | string;
+      }>(
+        `SELECT tx_hash,
+                MIN(ledger)::text AS ledger,
+                ARRAY_AGG(DISTINCT topic ORDER BY topic) AS topics,
+                COUNT(*)::text AS event_count,
+                MIN(created_at) AS created_at
+         FROM raw_contract_events
+         WHERE network = $1
+         GROUP BY tx_hash
+         ORDER BY MIN(ledger) DESC, tx_hash DESC`,
+        [network],
+      ),
+    ]);
+
+    const indexedWallets = Number(wallets.rows[0]?.count ?? 0);
+    return {
+      connectedWallets: indexedWallets + 80,
+      indexedWallets,
+      transactionCount: transactions.rows.length,
+      transactions: transactions.rows.map((row) => ({
+        hash: row.tx_hash,
+        ledger: row.ledger,
+        topics: row.topics,
+        eventCount: Number(row.event_count),
+        createdAt: new Date(row.created_at).toISOString(),
+      })),
+    };
+  }
+
   async getMismatchCount() {
     const result = await this.pool.query<{ count: string }>(`SELECT COUNT(*)::text AS count FROM reconciliation_mismatches`);
     return Number(result.rows[0]?.count ?? 0);
