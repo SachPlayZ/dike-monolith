@@ -20,6 +20,9 @@ export function createLogger(env: Env) {
 
   return pino({
     ...options,
+    serializers: {
+      error: pino.stdSerializers.err,
+    },
   });
 }
 

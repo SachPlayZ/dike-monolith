@@ -7,9 +7,17 @@ export function scValToNative(value: StellarSdk.xdr.ScVal | string) {
   return StellarSdk.scValToNative(scVal);
 }
 
+function scValToNativeSafe(value: StellarSdk.xdr.ScVal | string): unknown {
+  try {
+    return scValToNative(value);
+  } catch {
+    return undefined;
+  }
+}
+
 export function decodeRawEvent(event: Api.RawEventResponse) {
-  const topicValues = (event.topic ?? []).map((value) => scValToNative(value));
-  const payload = scValToNative(event.value);
+  const topicValues = (event.topic ?? []).map((value) => scValToNativeSafe(value));
+  const payload = scValToNativeSafe(event.value);
   return {
     topicValues,
     payload,

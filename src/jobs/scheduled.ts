@@ -41,41 +41,63 @@ export class ScheduledJobs {
     this.running = true;
     try {
       const latestLedger = await this.contracts.getLatestLedger();
-      await this.reconciliation.reconcileGovernance(latestLedger.sequence);
+      await this.safeStep({ scope: "governance" }, () =>
+        this.reconciliation.reconcileGovernance(latestLedger.sequence),
+      );
 
       const marketIds = await this.repository.listKnownMarketIds(this.network);
       const marketPools = await this.repository.listKnownMarketPools(this.network);
       const poolByMarket = new Map(marketPools.map(({ marketId, poolId }) => [marketId, poolId]));
 
       for (const marketId of marketIds) {
-        await this.reconciliation.reconcileMarket(marketId, latestLedger.sequence);
-        await this.reconciliation.reconcileVault(marketId, latestLedger.sequence);
+        await this.safeStep({ scope: "market", marketId }, () =>
+          this.reconciliation.reconcileMarket(marketId, latestLedger.sequence),
+        );
+        await this.safeStep({ scope: "vault", marketId }, () =>
+          this.reconciliation.reconcileVault(marketId, latestLedger.sequence),
+        );
 
         const positionOwners = await this.repository.listKnownPositionOwners(this.network, marketId);
         for (const owner of positionOwners) {
-          await this.reconciliation.reconcileUserPosition(marketId, owner, latestLedger.sequence);
+          await this.safeStep({ scope: "user_position", marketId, owner }, () =>
+            this.reconciliation.reconcileUserPosition(marketId, owner, latestLedger.sequence),
+          );
         }
         for (const owner of positionOwners) {
-          await this.reconciliation.reconcileUserVaultState(marketId, owner, latestLedger.sequence);
+          await this.safeStep({ scope: "user_vault_state", marketId, owner }, () =>
+            this.reconciliation.reconcileUserVaultState(marketId, owner, latestLedger.sequence),
+          );
         }
 
         const poolId = poolByMarket.get(marketId);
         if (poolId !== undefined) {
           const lpOwners = await this.repository.listKnownLpOwners(this.network, poolId);
           for (const owner of lpOwners) {
-            await this.reconciliation.reconcileLpPosition(poolId, owner, latestLedger.sequence);
+            await this.safeStep({ scope: "lp_position", marketId, poolId, owner }, () =>
+              this.reconciliation.reconcileLpPosition(poolId, owner, latestLedger.sequence),
+            );
           }
         }
       }
 
       const timelockActionIds = await this.repository.listKnownTimelockActionIds(this.network);
       for (const actionId of timelockActionIds) {
-        await this.reconciliation.reconcileTimelockAction(actionId, latestLedger.sequence);
+        await this.safeStep({ scope: "timelock_action", actionId }, () =>
+          this.reconciliation.reconcileTimelockAction(actionId, latestLedger.sequence),
+        );
       }
     } catch (error) {
       this.logger.error({ error }, "Scheduled reconciliation failed");
     } finally {
       this.running = false;
+    }
+  }
+
+  private async safeStep(context: Record<string, unknown>, step: () => Promise<unknown>) {
+    try {
+      await step();
+    } catch (error) {
+      this.logger.error({ error, ...context }, "Reconciliation step failed; continuing with remaining items");
     }
   }
 }
