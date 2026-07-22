@@ -70,6 +70,11 @@ export function RedeemForm({ position, onSuccess }: RedeemFormProps) {
   const yesBalance = BigInt(position.yesBalance);
   const noBalance = BigInt(position.noBalance);
 
+  // Resolved markets pay 1:1 only for the winning outcome; the losing side redeems for 0.
+  // Cancelled markets refund both sides proportionally, so raw balances stand in as the estimate.
+  const yesPayout = isResolved ? (position.finalOutcome === "Yes" ? yesBalance : 0n) : yesBalance;
+  const noPayout = isResolved ? (position.finalOutcome === "No" ? noBalance : 0n) : noBalance;
+
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
@@ -86,7 +91,7 @@ export function RedeemForm({ position, onSuccess }: RedeemFormProps) {
             onClick={() => handleRedeem("Yes")}
             disabled={isPending}
           >
-            Redeem YES ({formatUsdc(yesBalance)} USDC)
+            Redeem YES ({formatUsdc(yesPayout)} USDC)
           </Button>
         )}
         {noBalance > 0n && (
@@ -96,7 +101,7 @@ export function RedeemForm({ position, onSuccess }: RedeemFormProps) {
             onClick={() => handleRedeem("No")}
             disabled={isPending}
           >
-            Redeem NO ({formatUsdc(noBalance)} USDC)
+            Redeem NO ({formatUsdc(noPayout)} USDC)
           </Button>
         )}
       </div>

@@ -562,7 +562,7 @@ export async function registryGetFinalOutcome(
 
 // ─── ConditionalTokens ───────────────────────────────────────────────────────
 
-// Contract: balance(market_id: u64, owner: Address, outcome: Outcome) -> i128
+// Contract: balance(owner: Address, market_id: u64, outcome: Outcome) -> i128
 export async function ctBalance(
   source: string,
   account: string,
@@ -573,7 +573,7 @@ export async function ctBalance(
     source,
     CONTRACT_IDS.conditionalTokens(),
     "balance",
-    [id(marketId), toAddress(account), toOutcome(outcome)]
+    [toAddress(account), id(marketId), toOutcome(outcome)]
   );
   return String(fromI128(val));
 }
