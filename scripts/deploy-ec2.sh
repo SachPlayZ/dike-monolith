@@ -75,7 +75,7 @@ rollback() {
   if [[ "$had_primary" == true ]]; then
     docker rename "$ROLLBACK_NAME" "$APP_NAME"
     docker start "$APP_NAME" >/dev/null
-    if curl --retry 15 --retry-delay 2 --retry-connrefused \
+    if curl --retry 15 --retry-delay 2 --retry-connrefused --retry-all-errors \
       --fail --silent --show-error "$HEALTHCHECK_URL" >/dev/null; then
       echo "Previous primary restored."
     else
@@ -97,7 +97,7 @@ if ! docker run -d \
   exit 1
 fi
 
-if ! curl --retry 15 --retry-delay 2 --retry-connrefused \
+if ! curl --retry 15 --retry-delay 2 --retry-connrefused --retry-all-errors \
   --fail --silent --show-error "$HEALTHCHECK_URL" >/dev/null; then
   rollback
   exit 1
