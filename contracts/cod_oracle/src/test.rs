@@ -329,7 +329,7 @@ fn council_win_splits_losing_bond_winner_council_treasury() {
 /// in the outcome==proposed_outcome branch.  The sequence inside the function is:
 ///   1. release_bond(proposer, false)            ← succeeds (proposal_bonds: 500→0 temporarily)
 ///   2. slash_bond(disputer, winner_amt, true, …) ← FAILS (disputer bond = 0)
-///   → trap propagates → Soroban reverts entire tx → proposal_bonds restored to 500.
+///      → trap propagates → Soroban reverts entire tx → proposal_bonds restored to 500.
 #[test]
 fn bond_distribution_failure_mid_sequence_reverts_all() {
     let h = setup();

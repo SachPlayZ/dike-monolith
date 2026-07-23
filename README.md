@@ -88,6 +88,7 @@ Shared crates:
 ├── crates/                 # Shared Rust crates
 ├── docs/DEPLOYMENT.md      # Deployment runbook
 ├── scripts/deploy-testnet.sh
+├── scripts/maintain-contract-ttl.sh
 ├── scripts/local-flow.md   # Manual operator flow
 ├── deployments/            # Deployment manifests
 ├── PLAN.md                 # Protocol design plan
@@ -283,6 +284,12 @@ stellar keys generate alice --network local --fund
 
 # Deploy to testnet with default testnet USDC issuer
 NETWORK=testnet SOURCE=alice ./scripts/deploy-testnet.sh
+
+# Preview TTL renewal for all deployed mainnet modules (no transactions sent)
+./scripts/maintain-contract-ttl.sh --network mainnet
+
+# Validate keeper command generation without network access
+./scripts/test-maintain-contract-ttl.sh
 ```
 
 ## Further Reading
@@ -290,3 +297,7 @@ NETWORK=testnet SOURCE=alice ./scripts/deploy-testnet.sh
 - [PLAN.md](PLAN.md) - protocol design and module responsibilities.
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - deployment runbook and role wiring.
 - [scripts/local-flow.md](scripts/local-flow.md) - manual local operator flow.
+
+## License
+
+Apache-2.0. See [LICENSE](LICENSE).

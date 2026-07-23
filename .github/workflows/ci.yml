@@ -37,5 +37,10 @@ jobs:
       - name: Run Tests
         run: cargo test --workspace
 
+      - name: Test TTL maintenance commands
+        run: |
+          bash -n scripts/maintain-contract-ttl.sh scripts/test-maintain-contract-ttl.sh
+          ./scripts/test-maintain-contract-ttl.sh
+
       - name: Build Soroban WASM
         run: cargo build --workspace --release --target wasm32-unknown-unknown
