@@ -108,7 +108,10 @@ export function SweepProtocolFeesPanel({ variant }: SweepProtocolFeesPanelProps)
   return (
     <Card size="sm" className="overflow-hidden py-0">
       <button
+        type="button"
         onClick={handleExpand}
+        aria-expanded={expanded}
+        aria-controls={`protocol-fees-${variant}`}
         className="w-full px-5 py-4 flex items-center justify-between border-b border-border hover:bg-muted/50 transition-colors duration-200"
       >
         <div className="text-left">
@@ -125,7 +128,7 @@ export function SweepProtocolFeesPanel({ variant }: SweepProtocolFeesPanelProps)
       </button>
 
       {expanded && (
-        <div className="p-5 space-y-3">
+        <div id={`protocol-fees-${variant}`} className="p-5 space-y-3">
           {!isConnected ? (
             <Button size="sm" onClick={connect}>Connect Wallet</Button>
           ) : loading ? (

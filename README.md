@@ -28,8 +28,9 @@ Wallet (Freighter) ──sign──► lib/stellar/transaction.ts ──submit�
 | Path | Purpose |
 | --- | --- |
 | `/dashboard` | Portfolio overview: positions, LP shares, vault state, redeemables |
-| `/markets` | Market list with status/tradeability filters |
-| `/predictions` | Market detail, trading, liquidity |
+| `/predictions` | Market list with status/category filters |
+| `/markets/[marketId]` | Market detail, trading, liquidity, and resolution |
+| `/review` | SCF reviewer path and deployed-contract links |
 | `/create-predic` | Approved-creator market creation flow |
 | `/resolve` | Resolution lifecycle: propose, dispute, escalate, finalize |
 | `/council` | Council of Dike commit-reveal voting + reward claims |
@@ -39,9 +40,9 @@ Wallet (Freighter) ──sign──► lib/stellar/transaction.ts ──submit�
 ## Getting Started
 
 ```bash
-npm install
+pnpm install
 cp .env.example .env
-npm run dev
+pnpm dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
@@ -52,7 +53,7 @@ Requires a running `dike-services` instance (defaults to `http://localhost:4000`
 
 | Variable | Description |
 | --- | --- |
-| `NEXT_PUBLIC_STELLAR_NETWORK` | `mainnet`, `testnet`, or `local` |
+| `NEXT_PUBLIC_STELLAR_NETWORK` | `mainnet` or `testnet` |
 | `NEXT_PUBLIC_STELLAR_RPC_URL` | Soroban RPC endpoint used for simulation/submission |
 | `NEXT_PUBLIC_STELLAR_HORIZON_URL` | Horizon endpoint |
 | `NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE` | Must match the configured network |
@@ -60,6 +61,18 @@ Requires a running `dike-services` instance (defaults to `http://localhost:4000`
 | `NEXT_PUBLIC_DIKE_MANIFEST_NETWORK` | `testnet` or `mainnet` — selects which manifest `lib/contracts/manifest.ts` reads contract IDs from |
 
 Contract IDs come from `lib/contracts/testnet.json` and `lib/contracts/mainnet.json`, copies of `dike-contracts/deployments/<network>.json`. Keep them in sync manually after any contract redeploy — there is no build-time fetch or symlink.
+
+The app validates the selected network, passphrase, manifest, and endpoint URL shapes at runtime. Configuration errors are shown in the UI and block wallet signing. Mainnet transactions use real assets; testnet assets have no monetary value.
+
+## Reviewer flow
+
+1. Open `/review` and confirm the displayed Stellar network.
+2. Browse `/predictions`; expired markets are labeled and cannot be traded.
+3. Open a live market and inspect its public HTTPS rules, reserves, and quote.
+4. Connect a wallet on the displayed network. Review the declared maximum XLM fee before approving the wallet signature.
+5. Follow resolution state on the market page and redeem finalized positions from `/dashboard`.
+
+Market rules and resolution evidence must use public HTTPS URLs. Placeholder, local, credential-bearing, and non-HTTPS URLs are rejected.
 
 ## Project Structure
 
@@ -76,12 +89,18 @@ lib/types/        # Shared frontend types
 ## Testing
 
 ```bash
-npm run lint       # eslint
-npx tsc --noEmit   # typecheck
+pnpm test
+pnpm lint
+pnpm exec tsc --noEmit
+pnpm build
 ```
 
-No automated UI test suite — verify trading/liquidity/resolution/council/governance flows manually against a running `dike-services` + testnet contracts before shipping changes to `lib/contracts` or `lib/stellar`.
+Focused unit tests cover transaction encoding, ScVal conversions, portfolio normalization, and public-reference URL validation. CI runs tests, lint, typecheck, and a production build. Interactive wallet flows still require manual verification against `dike-services` and the selected Stellar network.
 
 ## Deployment
 
-No CI workflow in this repo; deploys are driven by the hosting platform's git integration on push. Set the `NEXT_PUBLIC_*` variables above in the hosting environment, matching whichever network's manifest (`testnet.json` or `mainnet.json`) you're targeting.
+Deploys are driven by the hosting platform's git integration. Set the `NEXT_PUBLIC_*` variables above in the build environment, matching the selected manifest. Public variables are frozen into the browser bundle by `next build`.
+
+## License
+
+Apache-2.0. See [LICENSE](LICENSE).

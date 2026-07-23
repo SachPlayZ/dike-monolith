@@ -9,6 +9,7 @@ import type {
   UserPosition,
   WalletPermissions,
 } from "@/lib/types";
+import { assertObservedNetwork } from "@/lib/stellar/config";
 
 type RawRecord = Record<string, unknown>;
 
@@ -63,6 +64,7 @@ function toMarketStatus(value: unknown): MarketStatus {
 }
 
 export function normalizeMarketData(row: RawRecord): MarketData {
+  assertObservedNetwork(row.network, "Dike services");
   const hasFinalOutcome = Boolean(row.has_final_outcome);
   const hasRequest = Boolean(row.has_request);
   const poolId = toStringValue(row.pool_id ?? "");
@@ -89,6 +91,7 @@ export function normalizeMarketData(row: RawRecord): MarketData {
     noReserve: toStringValue(row.no_reserve, "0"),
     totalLpShares: toStringValue(row.total_lp_shares, "0"),
     createdAt: toNumberValue(row.created_at_unix),
+    tradeable: toBooleanValue(row.tradeable, toMarketStatus(row.status) === "Live"),
   };
 }
 
@@ -139,13 +142,29 @@ export function normalizePortfolio(
   },
   markets: MarketData[],
 ): UserPosition[] {
+  [...portfolio.positions, ...portfolio.lpPositions, ...portfolio.vaultState].forEach((row) =>
+    assertObservedNetwork(row.network, "Dike services"),
+  );
   const marketMap = new Map(markets.map((market) => [market.marketId, market]));
   const lpByPool = new Map(
     portfolio.lpPositions.map((position) => [toStringValue(position.pool_id), position]),
   );
 
-  return portfolio.vaultState.map((vault) => {
-    const marketId = toStringValue(vault.market_id);
+  const vaultByMarket = new Map(
+    portfolio.vaultState.map((vault) => [toStringValue(vault.market_id), vault]),
+  );
+  const marketIds = new Set([
+    ...portfolio.vaultState.map((vault) => toStringValue(vault.market_id)),
+    ...portfolio.positions.map((position) => toStringValue(position.market_id)),
+    ...portfolio.lpPositions.flatMap((position) => {
+      const poolId = toStringValue(position.pool_id);
+      const market = markets.find((item) => item.poolId === poolId);
+      return market ? [market.marketId] : [];
+    }),
+  ]);
+
+  return Array.from(marketIds).filter(Boolean).map((marketId) => {
+    const vault = vaultByMarket.get(marketId) ?? {};
     const market = marketMap.get(marketId);
 
     const positionMap = new Map(
@@ -167,11 +186,14 @@ export function normalizePortfolio(
       noBalance: positionMap.get("No") ?? "0",
       lpShares,
       deposit: toStringValue(vault.user_deposit, "0"),
-      rootStake: toStringValue(vault.root_stake_yes, "0"),
+      rootStakeYes: toStringValue(vault.root_stake_yes, "0"),
+      rootStakeNo: toStringValue(vault.root_stake_no, "0"),
       childCredit: toStringValue(vault.child_used_total, "0"),
       childDebt: toStringValue(vault.child_debt, "0"),
-      parentDebt: toStringValue(vault.parent_debt_yes, "0"),
-      redeemedAmount: toStringValue(vault.redeemed_yes, "0"),
+      parentDebtYes: toStringValue(vault.parent_debt_yes, "0"),
+      parentDebtNo: toStringValue(vault.parent_debt_no, "0"),
+      redeemedYes: toStringValue(vault.redeemed_yes, "0"),
+      redeemedNo: toStringValue(vault.redeemed_no, "0"),
       marketStatus: market?.status ?? "Created",
       finalOutcome: market?.finalOutcome ?? null,
     };

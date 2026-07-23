@@ -42,21 +42,30 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
   const [side, setSide] = useState<Side>("buy");
   const [token, setToken] = useState<Token>("yes");
   const [amountInput, setAmountInput] = useState("");
-  const [quote, setQuote] = useState<{ amountOut: string; feeBps: number; priceImpactBps: number } | null>(null);
+  const quoteKey = `${address ?? ""}:${poolId}:${side}:${token}:${amountInput}`;
+  const [storedQuote, setQuote] = useState<{
+    key: string;
+    amountOut: string;
+    feeBps: number;
+    priceImpactBps: number;
+  } | null>(null);
+  const quote = storedQuote?.key === quoteKey ? storedQuote : null;
   const [simulatedFee, setSimulatedFee] = useState<string | null>(null);
   const [quoting, setQuoting] = useState(false);
   const [txState, setTxState] = useState<TxState>({ status: "idle", hash: null, error: null });
   const [isPending, startTransition] = useTransition();
-  const [balances, setBalances] = useState<{ yes: string; no: string } | null>(null);
-  const [balancesError, setBalancesError] = useState(false);
+  const [loadedBalances, setBalances] = useState<{
+    address: string;
+    yes: string;
+    no: string;
+  } | null>(null);
+  const [balancesErrorAddress, setBalancesErrorAddress] = useState<string | null>(null);
   const [balancesRetryNonce, setBalancesRetryNonce] = useState(0);
+  const balances = loadedBalances?.address === address ? loadedBalances : null;
+  const balancesError = balancesErrorAddress === address;
 
   useEffect(() => {
-    if (!address) {
-      setBalances(null);
-      setBalancesError(false);
-      return;
-    }
+    if (!address) return;
     let cancelled = false;
     fetchRawPortfolio(address)
       .then((portfolio) => {
@@ -68,14 +77,15 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
           (p) => String(p.market_id) === marketId && p.outcome === "No"
         );
         setBalances({
+          address,
           yes: String(yesPos?.balance ?? "0"),
           no: String(noPos?.balance ?? "0"),
         });
-        setBalancesError(false);
+        setBalancesErrorAddress(null);
       })
       .catch(() => {
         if (cancelled) return;
-        setBalancesError(true);
+        setBalancesErrorAddress(address);
       });
     return () => {
       cancelled = true;
@@ -99,18 +109,11 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
     })();
 
   useEffect(() => {
-    if (!address || !amountInput || parseFloat(amountInput) <= 0) {
-      setQuote(null);
-      setSimulatedFee(null);
-      return;
-    }
-    if (side === "sell" && (noPosition || exceedsPosition)) {
-      setQuote(null);
-      setSimulatedFee(null);
-      return;
-    }
-    setQuoting(true);
+    if (!address || !amountInput || parseFloat(amountInput) <= 0) return;
+    if (side === "sell" && (noPosition || exceedsPosition)) return;
+    const requestKey = quoteKey;
     const timer = setTimeout(async () => {
+      setQuoting(true);
       try {
         const rawIn = parseUsdc(amountInput).toString();
         let q;
@@ -123,7 +126,7 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
             ? await ammQuoteSellYes(address, poolId, rawIn)
             : await ammQuoteSellNo(address, poolId, rawIn);
         }
-        setQuote({ amountOut: q.amountOut, feeBps: q.feeBps, priceImpactBps: q.priceImpactBps });
+        setQuote({ key: requestKey, amountOut: q.amountOut, feeBps: q.feeBps, priceImpactBps: q.priceImpactBps });
       } catch (e) {
         setQuote(null);
         setSimulatedFee(null);
@@ -133,7 +136,7 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [address, amountInput, side, token, poolId, noPosition, exceedsPosition]);
+  }, [address, amountInput, side, token, poolId, noPosition, exceedsPosition, quoteKey]);
 
   async function handleTrade() {
     if (!address || !amountInput || !quote) return;
@@ -242,6 +245,8 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
           </div>
           <div className="flex items-baseline gap-2">
             <input
+              aria-label={`${side === "buy" ? "Buy" : "Sell"} ${token.toUpperCase()} amount`}
+              inputMode="decimal"
               type="number"
               min="0"
               step="0.01"

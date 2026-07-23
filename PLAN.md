@@ -4,10 +4,10 @@
 
 `dike-web` is the user-facing Dike Protocol application. It should be a Next.js TypeScript App Router project that reads indexed protocol state from `dike-services`, refreshes action-critical contract state from Stellar RPC, and submits user-signed Soroban transactions through Freighter or Stellar Wallets Kit.
 
-The frontend must treat `/Users/sachplayz/Projects/Dike_Stellar/dike-contracts` as the canonical source for contract interfaces, deployment manifests, enum names, and market lifecycle rules. The current testnet manifest lives at:
+The frontend must treat the sibling `dike-contracts` repository as the canonical source for contract interfaces, deployment manifests, enum names, and market lifecycle rules. The current testnet manifest lives at:
 
 ```text
-/Users/sachplayz/Projects/Dike_Stellar/dike-contracts/deployments/testnet.json
+../dike-contracts/deployments/testnet.json
 ```
 
 The application must never custody private keys. All user transactions are built, simulated, signed by the connected wallet, submitted to Stellar RPC, and then reconciled through `dike-services`.

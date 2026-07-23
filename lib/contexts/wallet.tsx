@@ -16,9 +16,10 @@ import {
   kitGetNetwork,
   initWalletKit,
 } from "@/lib/stellar/wallet";
-import { networkConfig } from "@/lib/stellar/config";
+import { assertValidConfiguration, networkConfig } from "@/lib/stellar/config";
 import { fetchWalletPermissions } from "@/lib/api/authz";
 import type { WalletPermissions } from "@/lib/types";
+import { feeFromXdr, formatFeeXlm } from "@/lib/stellar/transaction";
 
 interface WalletContextType {
   address: string | null;
@@ -49,8 +50,15 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     if (!stored) return;
 
     initWalletKit().then(() => {
-      kitGetAddress()
-        .then((addr) => {
+      Promise.all([kitGetAddress(), kitGetNetwork()])
+        .then(([addr, walletNetwork]) => {
+          if (walletNetwork !== networkConfig.networkPassphrase) {
+            setNetworkError(
+              `Wrong wallet network. Switch to ${networkConfig.label}.`,
+            );
+            sessionStorage.removeItem(ADDRESS_KEY);
+            return;
+          }
           if (addr === stored) setAddress(addr);
           else sessionStorage.removeItem(ADDRESS_KEY);
         })
@@ -62,6 +70,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setIsConnecting(true);
     setNetworkError(null);
     try {
+      assertValidConfiguration();
       // Open the wallet picker/auth modal first — a module must be
       // selected before getNetwork() can be called on it.
       const addr = await kitConnect();
@@ -76,7 +85,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       if (walletNet !== networkConfig.networkPassphrase) {
         await kitDisconnect().catch(() => {});
         setNetworkError(
-          `Wrong network. Expected "${networkConfig.networkPassphrase}", wallet is on "${walletNet}".`
+          `Wrong wallet network. Switch to ${networkConfig.label}.`
         );
         return;
       }
@@ -103,6 +112,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const sign = useCallback(
     async (xdr: string): Promise<string> => {
       if (!address) throw new Error("Wallet not connected");
+      assertValidConfiguration();
 
       // Verify network before signing
       let walletNet: string;
@@ -113,9 +123,15 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       }
       if (walletNet !== networkConfig.networkPassphrase) {
         throw new Error(
-          `Wrong network. Switch wallet to Stellar Testnet before signing.`
+          `Wrong wallet network. Switch to ${networkConfig.label} before signing.`
         );
       }
+
+      const maximumFee = formatFeeXlm(feeFromXdr(xdr));
+      const approved = window.confirm(
+        `Review transaction before opening your wallet\n\nNetwork: ${networkConfig.label}\nDeclared maximum network fee: ${maximumFee}\n\nThe network normally refunds unused fee. Continue to wallet signing?`,
+      );
+      if (!approved) throw new Error("Transaction signing cancelled.");
 
       return kitSign(xdr);
     },

@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { COLLATERAL_CONTRACT } from "@/lib/contracts/manifest";
 import { MARKET_CATEGORIES, type TxState } from "@/lib/types";
 import { networkConfig } from "@/lib/stellar/config";
+import { getReferenceUrlError } from "@/lib/validation/reference-url";
 import { toast } from "sonner";
 
 // Opening price is fixed at 5000 bps — contract rejects any other value
@@ -103,7 +104,8 @@ export default function CreateMarketPage() {
 
   function validate(): { field: keyof typeof form; message: string } | null {
     if (!form.question.trim()) return { field: "question", message: "Question is required" };
-    if (!form.rulesUri.trim()) return { field: "rulesUri", message: "Rules URI is required" };
+    const rulesUrlError = getReferenceUrlError(form.rulesUri, "Rules URL");
+    if (rulesUrlError) return { field: "rulesUri", message: rulesUrlError };
     if (!form.category) return { field: "category", message: "Category is required" };
     if (!form.expiry) return { field: "expiry", message: "Expiry is required" };
     const expiryTs = Math.floor(new Date(form.expiry).getTime() / 1000);
@@ -139,13 +141,13 @@ export default function CreateMarketPage() {
 
         const expiryTs = Math.floor(new Date(form.expiry).getTime() / 1000);
         const [questionHash, rulesHash] = await Promise.all([
-          sha256Hex(form.question),
-          sha256Hex(form.rulesUri),
+          sha256Hex(form.question.trim()),
+          sha256Hex(form.rulesUri.trim()),
         ]);
         const params: CreateMarketParams = {
-          question: form.question,
+          question: form.question.trim(),
           questionHash,
-          rulesUri: form.rulesUri,
+          rulesUri: form.rulesUri.trim(),
           rulesHash,
           category: form.category,
           expiry: expiryTs,
@@ -168,7 +170,7 @@ export default function CreateMarketPage() {
         setTxState({ status: "submitting", hash: null, error: null });
         const result = await submitAndPoll(signedXdr);
 
-        const explorerUrl = `https://stellar.expert/explorer/${networkConfig.network}/tx/${result.hash}`;
+        const explorerUrl = `https://stellar.expert/explorer/${networkConfig.explorerNetwork}/tx/${result.hash}`;
         toast.success("Market Created", {
           description: "Transaction confirmed on Stellar.",
           action: {
@@ -283,7 +285,11 @@ export default function CreateMarketPage() {
               value={form.rulesUri}
               onChange={set("rulesUri")}
               placeholder="https://…"
+              aria-describedby="rulesUri-help"
             />
+            <p id="rulesUri-help" className="text-xs text-muted-foreground">
+              Permanent public HTTPS page with the resolution source and criteria. Placeholder URLs are rejected.
+            </p>
           </Field>
 
           <Field label="Category *" error={fieldErrors.category}>

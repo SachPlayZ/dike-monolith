@@ -42,14 +42,26 @@ export function PositionCard({ position, onRedeem }: PositionCardProps) {
           {BigInt(position.deposit) > 0n && (
             <Stat label="Deposit" value={formatUsdc(BigInt(position.deposit))} />
           )}
-          {BigInt(position.rootStake) > 0n && (
-            <Stat label="Root stake" value={formatUsdc(BigInt(position.rootStake))} />
+          {BigInt(position.rootStakeYes) > 0n && (
+            <Stat label="YES root stake" value={formatUsdc(BigInt(position.rootStakeYes))} />
+          )}
+          {BigInt(position.rootStakeNo) > 0n && (
+            <Stat label="NO root stake" value={formatUsdc(BigInt(position.rootStakeNo))} />
           )}
           {BigInt(position.childDebt) > 0n && (
             <Stat label="Child debt" value={formatUsdc(BigInt(position.childDebt))} warn />
           )}
-          {BigInt(position.parentDebt) > 0n && (
-            <Stat label="Parent debt" value={formatUsdc(BigInt(position.parentDebt))} warn />
+          {BigInt(position.parentDebtYes) > 0n && (
+            <Stat label="YES parent debt" value={formatUsdc(BigInt(position.parentDebtYes))} warn />
+          )}
+          {BigInt(position.parentDebtNo) > 0n && (
+            <Stat label="NO parent debt" value={formatUsdc(BigInt(position.parentDebtNo))} warn />
+          )}
+          {BigInt(position.redeemedYes) > 0n && (
+            <Stat label="YES redeemed" value={formatUsdc(BigInt(position.redeemedYes))} />
+          )}
+          {BigInt(position.redeemedNo) > 0n && (
+            <Stat label="NO redeemed" value={formatUsdc(BigInt(position.redeemedNo))} />
           )}
         </div>
 
@@ -70,7 +82,9 @@ export function PositionCard({ position, onRedeem }: PositionCardProps) {
           </p>
         )}
 
-        {(BigInt(position.childDebt) > 0n || BigInt(position.parentDebt) > 0n) && (
+        {(BigInt(position.childDebt) > 0n ||
+          BigInt(position.parentDebtYes) > 0n ||
+          BigInt(position.parentDebtNo) > 0n) && (
           <Alert variant="warning">
             <AlertDescription>
               Position has encumbered debt. Transfers and sells may be blocked until debt is cleared.

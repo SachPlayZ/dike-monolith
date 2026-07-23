@@ -5,6 +5,7 @@ import { Instrument_Serif } from "next/font/google";
 import { Instrument_Sans } from "next/font/google";
 import Link from "next/link";
 import LandingNavbar from "@/components/LandingNavbar";
+import { networkConfig } from "@/lib/stellar/config";
 
 const instrumentSerif = Instrument_Serif({
   subsets: ["latin"],
@@ -48,14 +49,22 @@ export default function LandingPage() {
             <br />
             infinite possibilities.
           </h1>
-          <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2 w-full flex justify-center z-10 px-6">
+          <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2 w-full flex flex-col items-center justify-center z-10 px-6">
             <p
-              className={`${instrumentSerif.className} text-white text-center text-balance font-normal tracking-tight mb-20 text-lg sm:text-xl md:text-2xl lg:text-3xl`}
+              className={`${instrumentSerif.className} text-white text-center text-balance font-normal tracking-tight text-lg sm:text-xl md:text-2xl lg:text-3xl`}
             >
-              One stake. Multiple predictions.
+              {networkConfig.network === "mainnet"
+                ? "USDC markets on Stellar Mainnet."
+                : "Review and test on Stellar Testnet."}
               <br />
-              Maximum efficiency.
+              One stake. Multiple predictions.
             </p>
+            <Link
+              href="/predictions"
+              className={`${instrumentSans.className} mt-6 border border-white/40 px-6 py-3 text-sm font-semibold uppercase tracking-widest text-white transition-colors hover:bg-white/10`}
+            >
+              Explore Markets
+            </Link>
           </div>
         </div>
       </section>
@@ -81,11 +90,11 @@ export default function LandingPage() {
         {/* Top Half - Heading and Explanation */}
         <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 md:px-8 pb-0">
           <div className="max-w-6xl w-full">
-            <h1
+            <h2
               className={`${instrumentSerif.className} text-white text-left text-balance font-normal tracking-tight text-3xl sm:text-4xl md:text-5xl lg:text-7xl mb-6 md:mb-8 max-w-4xl`}
             >
               Unlocking <i>Capital Efficiency</i> in Prediction Markets
-            </h1>
+            </h2>
             <p
               className={`${instrumentSans.className} text-white text-left text-balance font-normal tracking-tight text-base sm:text-lg leading-relaxed max-w-5xl`}
             >
@@ -100,8 +109,7 @@ export default function LandingPage() {
 
         {/* Bottom Half - Key Features */}
         <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 md:px-8 pt-0">
-          <b>
-            <div className="max-w-6xl w-full">
+            <div className="max-w-6xl w-full font-semibold">
               <h2
                 className={`${instrumentSerif.className} text-black text-center text-balance font-bold tracking-tight text-4xl sm:text-5xl md:text-6xl lg:text-7xl mb-8 md:mb-12`}
               >
@@ -148,7 +156,6 @@ export default function LandingPage() {
                 </div>
               </div>
             </div>
-          </b>
         </div>
       </section>
 
@@ -175,9 +182,9 @@ export default function LandingPage() {
           <div
             className={`${instrumentSerif.className} text-white text-3xl sm:text-4xl md:text-5xl lg:text-6xl leading-relaxed mb-8 md:mb-12 mt-20`}
           >
-            Read our whitepaper{" "}
+            Review the working protocol{" "}
             <Link
-              href="https://geton.dikeprotocol.xyz/waitlist"
+              href="/review"
               className="italic underline hover:text-white/80 transition-colors duration-300"
             >
               here
@@ -187,16 +194,15 @@ export default function LandingPage() {
           <div
             className={`${instrumentSans.className} text-white/90 text-base sm:text-lg md:text-xl leading-relaxed mb-8 md:mb-10 max-w-2xl`}
           >
-            Be among the first to experience the future of prediction markets.
+            Browse indexed markets, inspect public rules, connect a wallet, and
             <br />
-            Join our waitlist to get early access and stay updated on our
-            launch.
+            follow a complete trade-to-redemption reviewer flow.
           </div>
           <Link
-            href="https://geton.dikeprotocol.xyz"
+            href="/predictions"
             className={`${instrumentSerif.className} text-white text-xl sm:text-2xl md:text-3xl font-normal tracking-wide px-6 sm:px-8 md:px-12 py-3 sm:py-4 md:py-5 border border-white/30 hover:border-white/60 hover:bg-white/10 transition-all duration-300 rounded-sm`}
           >
-            Join the Waitlist
+            Open the App
           </Link>
         </div>
 
@@ -224,10 +230,10 @@ export default function LandingPage() {
               Predictions
             </Link>
             <Link
-              href="/swap"
+              href="/review"
               className="hover:text-white/90 transition-colors duration-300"
             >
-              Swap
+              Reviewer Guide
             </Link>
             <Link
               href="/dashboard"
@@ -236,12 +242,14 @@ export default function LandingPage() {
               Dashboard
             </Link>
             <Link
-              href="https://geton.dikeprotocol.xyz/waitlist"
+              href="https://github.com/Dike-Protocol"
+              target="_blank"
+              rel="noopener noreferrer"
               className="hover:text-white/90 transition-colors duration-300"
             >
-              Whitepaper
+              Source
             </Link>
-            <div className="text-white/50">© 2025 DIKE Protocol</div>
+            <div className="text-white/50">© 2026 DIKE Protocol</div>
           </div>
         </footer>
       </section>

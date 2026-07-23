@@ -45,15 +45,26 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
   const { address, isConnected, connect, sign } = useWallet();
   const [expanded, setExpanded] = useState(false);
   const [markets, setMarkets] = useState<MarketData[]>([]);
-  const [marketsLoading, setMarketsLoading] = useState(false);
+  const marketsKey = `${address ?? ""}:${currentMarketId}`;
+  const [loadedMarketsKey, setLoadedMarketsKey] = useState<string | null>(null);
+  const marketsLoading = Boolean(expanded && address && loadedMarketsKey !== marketsKey);
   const [positionStakes, setPositionStakes] = useState<Record<string, { yes: string; no: string }>>({});
   const [parentMarketId, setParentMarketId] = useState("");
   const [parentOutcome, setParentOutcome] = useState<"Yes" | "No">("Yes");
-  const [availableCredit, setAvailableCredit] = useState<string | null>(null);
-  const [creditLoading, setCreditLoading] = useState(false);
+  const creditKey = `${address ?? ""}:${parentMarketId}:${parentOutcome}`;
+  const [creditResult, setCreditResult] = useState<{ key: string; value: string | null } | null>(null);
+  const availableCredit = creditResult?.key === creditKey ? creditResult.value : null;
+  const creditLoading = Boolean(address && parentMarketId && creditResult?.key !== creditKey);
   const [token, setToken] = useState<ChildToken>("yes");
   const [amountInput, setAmountInput] = useState("");
-  const [quote, setQuote] = useState<{ amountOut: string; feeBps: number; priceImpactBps: number } | null>(null);
+  const quoteKey = `${address ?? ""}:${poolId}:${token}:${amountInput}`;
+  const [storedQuote, setQuote] = useState<{
+    key: string;
+    amountOut: string;
+    feeBps: number;
+    priceImpactBps: number;
+  } | null>(null);
+  const quote = storedQuote?.key === quoteKey ? storedQuote : null;
   const [simulatedFee, setSimulatedFee] = useState<string | null>(null);
   const [quoting, setQuoting] = useState(false);
   const [txState, setTxState] = useState<TxState>({ status: "idle", hash: null, error: null });
@@ -61,12 +72,14 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
 
   useEffect(() => {
     if (!expanded || !address) return;
-    setMarketsLoading(true);
+    let cancelled = false;
+    const requestKey = marketsKey;
     Promise.all([
       apiGet<{ items: Record<string, unknown>[] }>("/markets"),
       fetchRawPortfolio(address),
     ])
       .then(([res, portfolio]) => {
+        if (cancelled) return;
         const live = res.items
           .map((r) => normalizeMarketData(r))
           .filter((m) => m.status === "Live" && m.marketId !== currentMarketId);
@@ -90,45 +103,45 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
         setPositionStakes(stakeMap);
         setMarkets(held);
       })
-      .catch(() => {})
-      .finally(() => setMarketsLoading(false));
-  }, [expanded, address, currentMarketId]);
+      .catch(() => {
+        if (cancelled) return;
+        setPositionStakes({});
+        setMarkets([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadedMarketsKey(requestKey);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [expanded, address, currentMarketId, marketsKey]);
 
   useEffect(() => {
-    if (!address || !parentMarketId) {
-      setAvailableCredit(null);
-      return;
-    }
-    setCreditLoading(true);
-    setAvailableCredit(null);
+    if (!address || !parentMarketId) return;
+    const requestKey = creditKey;
     const timer = setTimeout(async () => {
       try {
         const avail = await vaultGetChildAvail(address, address, parentMarketId, parentOutcome as Outcome);
-        setAvailableCredit(avail);
+        setCreditResult({ key: requestKey, value: avail });
       } catch {
-        setAvailableCredit(null);
-      } finally {
-        setCreditLoading(false);
+        setCreditResult({ key: requestKey, value: null });
       }
     }, 400);
     return () => clearTimeout(timer);
-  }, [address, parentMarketId, parentOutcome]);
+  }, [address, parentMarketId, parentOutcome, creditKey]);
 
   useEffect(() => {
-    if (!address || !amountInput || parseFloat(amountInput) <= 0) {
-      setQuote(null);
-      setSimulatedFee(null);
-      return;
-    }
-    setQuoting(true);
+    if (!address || !amountInput || parseFloat(amountInput) <= 0) return;
+    const requestKey = quoteKey;
     const timer = setTimeout(async () => {
+      setQuoting(true);
       try {
         const rawIn = parseUsdc(amountInput).toString();
         const q =
           token === "yes"
             ? await ammQuoteBuyYes(address, poolId, rawIn)
             : await ammQuoteBuyNo(address, poolId, rawIn);
-        setQuote({ amountOut: q.amountOut, feeBps: q.feeBps, priceImpactBps: q.priceImpactBps });
+        setQuote({ key: requestKey, amountOut: q.amountOut, feeBps: q.feeBps, priceImpactBps: q.priceImpactBps });
       } catch {
         setQuote(null);
         setSimulatedFee(null);
@@ -137,7 +150,7 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [address, amountInput, token, poolId]);
+  }, [address, amountInput, token, poolId, quoteKey]);
 
   async function handleBuy() {
     if (!address || !amountInput || !quote || !parentMarketId) return;
@@ -161,7 +174,7 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
         setTxState({ status: "success", hash: result.hash, error: null });
         setAmountInput("");
         setQuote(null);
-        setAvailableCredit(null);
+        setCreditResult(null);
         router.refresh();
       } catch (e) {
         const code = parseDikeError(e);
@@ -203,7 +216,10 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
     <Card size="sm" className="overflow-hidden py-0">
       {/* Collapsible header */}
       <button
+        type="button"
         onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        aria-controls="child-trade-form"
         className="w-full px-5 py-4 flex items-center justify-between border-b border-border hover:bg-muted/50 transition-colors duration-200"
       >
         <div className="text-left">
@@ -214,7 +230,7 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
       </button>
 
       {expanded && (
-        <div className="p-5 space-y-4">
+        <div id="child-trade-form" className="p-5 space-y-4">
           {/* Warning */}
           <div className="px-4 py-3 rounded-md bg-yellow-500/10 border border-yellow-500/25 text-xs text-yellow-700 dark:text-yellow-400">
             Credit encumbers your parent position. Clear child debt before selling parent.
@@ -363,6 +379,8 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
             </div>
             <div className="flex items-baseline gap-2">
               <input
+                aria-label={`Parent credit amount for ${token.toUpperCase()}`}
+                inputMode="decimal"
                 type="number"
                 min="0"
                 step="0.01"

@@ -31,7 +31,7 @@ async function ResolutionWorkbench() {
   } catch (e) {
     error =
       e instanceof ServiceUnavailableError
-        ? "dike-services is not running."
+        ? "Resolution data is temporarily unavailable. Please try again."
         : e instanceof Error
         ? e.message
         : "Failed to load markets";

@@ -17,6 +17,7 @@ export function WalletButton({ className }: WalletButtonProps) {
         onClick={disconnect}
         className={cn(className)}
         title={address}
+        aria-label={`Disconnect wallet ${address}`}
       >
         {address.slice(0, 4)}…{address.slice(-4)}
       </button>
@@ -28,6 +29,7 @@ export function WalletButton({ className }: WalletButtonProps) {
       onClick={connect}
       disabled={isConnecting}
       className={cn(className, isConnecting && "opacity-60 cursor-wait")}
+      aria-label={isConnecting ? "Connecting wallet" : "Connect wallet"}
     >
       {isConnecting ? "connecting…" : "connect wallet"}
     </button>

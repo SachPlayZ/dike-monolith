@@ -5,6 +5,7 @@ import {
   vaultGetParentDebt,
   vaultGetRootStake,
   vaultGetUserDeposit,
+  vaultGetRedeemed,
 } from "@/lib/contracts/clients";
 import type { UserPosition } from "@/lib/types";
 
@@ -19,9 +20,13 @@ export async function hydratePortfolioPositions(
         noBalance,
         lpShares,
         deposit,
-        rootStake,
+        rootStakeYes,
+        rootStakeNo,
         childDebt,
-        parentDebt,
+        parentDebtYes,
+        parentDebtNo,
+        redeemedYes,
+        redeemedNo,
       ] = await Promise.all([
         ctBalance(address, address, position.marketId, "Yes").catch(() => position.yesBalance),
         ctBalance(address, address, position.marketId, "No").catch(() => position.noBalance),
@@ -29,9 +34,13 @@ export async function hydratePortfolioPositions(
           ? ammGetLpBalance(address, address, position.poolId).catch(() => position.lpShares)
           : Promise.resolve(position.lpShares),
         vaultGetUserDeposit(address, address, position.marketId).catch(() => position.deposit),
-        vaultGetRootStake(address, address, position.marketId, "Yes").catch(() => position.rootStake),
+        vaultGetRootStake(address, address, position.marketId, "Yes").catch(() => position.rootStakeYes),
+        vaultGetRootStake(address, address, position.marketId, "No").catch(() => position.rootStakeNo),
         vaultGetChildDebt(address, address, position.marketId).catch(() => position.childDebt),
-        vaultGetParentDebt(address, address, position.marketId, "Yes").catch(() => position.parentDebt),
+        vaultGetParentDebt(address, address, position.marketId, "Yes").catch(() => position.parentDebtYes),
+        vaultGetParentDebt(address, address, position.marketId, "No").catch(() => position.parentDebtNo),
+        vaultGetRedeemed(address, address, position.marketId, "Yes").catch(() => position.redeemedYes),
+        vaultGetRedeemed(address, address, position.marketId, "No").catch(() => position.redeemedNo),
       ]);
 
       return {
@@ -40,9 +49,13 @@ export async function hydratePortfolioPositions(
         noBalance,
         lpShares,
         deposit,
-        rootStake,
+        rootStakeYes,
+        rootStakeNo,
         childDebt,
-        parentDebt,
+        parentDebtYes,
+        parentDebtNo,
+        redeemedYes,
+        redeemedNo,
       };
     }),
   );

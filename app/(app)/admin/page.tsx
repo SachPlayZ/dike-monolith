@@ -23,7 +23,7 @@ async function loadAdminData() {
   } catch (e) {
     const error =
       e instanceof ServiceUnavailableError
-        ? "dike-services is not running. Start it to view governance state."
+        ? "Governance data is temporarily unavailable. Please try again."
         : e instanceof Error && e.message.includes("API error 401")
         ? "Admin reads are now protected behind a server-side admin API key and are not exposed through the public web session."
         : e instanceof Error

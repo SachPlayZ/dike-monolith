@@ -67,7 +67,7 @@ export function verifyNetwork(walletNetwork: string) {
   const expected = networkConfig.networkPassphrase;
   if (walletNetwork !== expected) {
     throw new Error(
-      `Wrong network. Wallet is on "${walletNetwork}", expected "${expected}". Switch your wallet to Stellar Testnet.`
+      `Wrong wallet network. Switch to ${networkConfig.label}.`
     );
   }
 }

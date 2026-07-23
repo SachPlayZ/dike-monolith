@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { MarketData, ResolutionRequest, TxState, Outcome } from "@/lib/types";
+import { getReferenceUrlError } from "@/lib/validation/reference-url";
 
 interface ResolutionPanelProps {
   market: MarketData;
@@ -75,6 +76,9 @@ export function ResolutionPanel({ market, request, onSuccess }: ResolutionPanelP
   }
 
   const marketExpired = now > market.config.expiry;
+  const evidenceError = evidenceUri
+    ? getReferenceUrlError(evidenceUri, "Evidence URL")
+    : "Evidence URL is required";
 
   return (
     <div className="space-y-5">
@@ -108,13 +112,13 @@ export function ResolutionPanel({ market, request, onSuccess }: ResolutionPanelP
       {request && request.status === "Requested" && (
         <Section title="Propose Outcome">
           <OutcomeSelector value={selectedOutcome} onChange={setSelectedOutcome} />
-          <EvidenceInput value={evidenceUri} onChange={setEvidenceUri} />
+          <EvidenceInput value={evidenceUri} onChange={setEvidenceUri} error={evidenceError} />
           <p className="text-xs text-muted-foreground">
             Bond amount: {formatUsdc(BigInt(market.config.bondAmount))} USDC (will be locked until finalization)
           </p>
           <Button
             size="sm"
-            disabled={isPending || !evidenceUri}
+            disabled={isPending || Boolean(evidenceError)}
             onClick={() =>
               exec(() => buildProposeOutcome(address!, request.requestId, selectedOutcome, evidenceUri))
             }
@@ -143,11 +147,11 @@ export function ResolutionPanel({ market, request, onSuccess }: ResolutionPanelP
                 {canDispute && (
                   <>
                     <OutcomeSelector value={selectedOutcome} onChange={setSelectedOutcome} />
-                    <EvidenceInput value={evidenceUri} onChange={setEvidenceUri} />
+                    <EvidenceInput value={evidenceUri} onChange={setEvidenceUri} error={evidenceError} />
                     <Button
                       size="sm"
                       variant="destructive"
-                      disabled={isPending || !evidenceUri}
+                      disabled={isPending || Boolean(evidenceError)}
                       onClick={() =>
                         exec(() =>
                           buildDisputeOutcome(address!, request.requestId, selectedOutcome, evidenceUri)
@@ -222,6 +226,7 @@ function OutcomeSelector({ value, onChange }: { value: Outcome; onChange: (o: Ou
           size="xs"
           variant={value === o ? "default" : "outline"}
           className="flex-1"
+          aria-pressed={value === o}
           onClick={() => onChange(o)}
         >
           {o}
@@ -231,16 +236,30 @@ function OutcomeSelector({ value, onChange }: { value: Outcome; onChange: (o: Ou
   );
 }
 
-function EvidenceInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function EvidenceInput({
+  value,
+  onChange,
+  error,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  error: string | null;
+}) {
   return (
     <div className="space-y-1">
-      <Label className="text-muted-foreground font-medium normal-case tracking-normal">Evidence URI (required)</Label>
+      <Label htmlFor="evidence-url" className="text-muted-foreground font-medium normal-case tracking-normal">Evidence URL (required)</Label>
       <Input
+        id="evidence-url"
         type="url"
         placeholder="https://…"
         value={value}
+        aria-invalid={Boolean(value && error)}
+        aria-describedby="evidence-url-help"
         onChange={(e) => onChange(e.target.value)}
       />
+      <p id="evidence-url-help" className={value && error ? "text-xs text-destructive" : "text-xs text-muted-foreground"}>
+        {value && error ? error : "Public HTTPS source reviewers can open. Placeholder URLs are rejected."}
+      </p>
     </div>
   );
 }

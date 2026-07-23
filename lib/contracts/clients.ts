@@ -504,6 +504,22 @@ export async function vaultGetParentDebt(
   return String(fromI128(val));
 }
 
+// Contract: redeemed(market_id: u64, user: Address, outcome: Outcome) -> i128
+export async function vaultGetRedeemed(
+  source: string,
+  user: string,
+  marketId: string,
+  outcome: Outcome
+): Promise<string> {
+  const val = await simulateRead(
+    source,
+    CONTRACT_IDS.collateralVault(),
+    "redeemed",
+    [id(marketId), toAddress(user), toOutcome(outcome)]
+  );
+  return String(fromI128(val));
+}
+
 // ─── MarketRegistry ──────────────────────────────────────────────────────────
 
 export async function registryGetMarket(

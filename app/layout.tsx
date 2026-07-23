@@ -3,6 +3,7 @@ import { Instrument_Serif, Instrument_Sans, Geist_Mono } from "next/font/google"
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { WalletProvider } from "@/lib/contexts/wallet";
+import { NetworkStatus } from "@/components/app-shell/NetworkStatus";
 
 const instrumentSerif = Instrument_Serif({
   variable: "--font-heading",
@@ -47,7 +48,10 @@ export default function RootLayout({
       className={cn("h-full antialiased", instrumentSerif.variable, instrumentSans.variable, geistMono.variable, "font-sans")}
     >
       <body className="min-h-full flex flex-col">
-        <WalletProvider>{children}</WalletProvider>
+        <WalletProvider>
+          <NetworkStatus />
+          {children}
+        </WalletProvider>
       </body>
     </html>
   );

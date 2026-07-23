@@ -1,5 +1,6 @@
 import testnetData from "./testnet.json";
 import mainnetData from "./mainnet.json";
+import { networkConfig } from "@/lib/stellar/config";
 
 export type ContractKey =
   | "mock_usdc"
@@ -19,9 +20,7 @@ const manifests = {
   mainnet: mainnetData,
 } as const;
 
-const activeNetwork =
-  (process.env.NEXT_PUBLIC_DIKE_MANIFEST_NETWORK as keyof typeof manifests) ??
-  "testnet";
+const activeNetwork = networkConfig.manifestNetwork as keyof typeof manifests;
 
 const manifest = manifests[activeNetwork] ?? manifests.testnet;
 
@@ -34,6 +33,7 @@ export function getContractId(key: ContractKey): string {
 export const COLLATERAL_CONTRACT = manifest.collateral_contract;
 export const ASSET_CODE = manifest.asset_code;
 export const USDC_ISSUER = manifest.usdc_issuer;
+export const MANIFEST_NETWORK = manifest.network;
 
 // Contract IDs (lazy – call getContractId at runtime to avoid startup throws)
 export const CONTRACT_IDS = {

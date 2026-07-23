@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useWallet } from "@/lib/contexts/wallet";
 import { fetchPortfolio } from "@/lib/api/portfolio";
 import { hydratePortfolioPositions } from "@/lib/portfolio/live";
+import { useLiveUpdates } from "@/lib/hooks/useLiveUpdates";
 import { PositionCard } from "@/features/portfolio/PositionCard";
 import { RedeemForm } from "@/features/portfolio/RedeemForm";
 import { EmptyState } from "@/components/data-state/EmptyState";
@@ -36,7 +37,7 @@ export default function DashboardPage() {
       setPositions([]);
       setError(
         e instanceof ServiceUnavailableError
-          ? "dike-services is not running. Start it to view your portfolio."
+          ? "Portfolio data is temporarily unavailable. Please try again."
           : e instanceof Error
           ? e.message
           : "Failed to load portfolio"
@@ -62,7 +63,7 @@ export default function DashboardPage() {
         setPositions([]);
         setError(
           e instanceof ServiceUnavailableError
-            ? "dike-services is not running. Start it to view your portfolio."
+            ? "Portfolio data is temporarily unavailable. Please try again."
             : e instanceof Error
             ? e.message
             : "Failed to load portfolio"
@@ -74,6 +75,23 @@ export default function DashboardPage() {
       cancelled = true;
     };
   }, [address]);
+
+  const pendingLiveRefreshRef = useRef(false);
+  useLiveUpdates((update) => {
+    if (
+      !address ||
+      update.type !== "portfolio" ||
+      update.address.toUpperCase() !== address.toUpperCase() ||
+      pendingLiveRefreshRef.current
+    ) {
+      return;
+    }
+    pendingLiveRefreshRef.current = true;
+    setTimeout(() => {
+      pendingLiveRefreshRef.current = false;
+      void refreshPortfolio(address);
+    }, 300);
+  });
 
   const loading = Boolean(address) && portfolioAddress !== address;
 

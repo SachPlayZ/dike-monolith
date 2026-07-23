@@ -1,6 +1,6 @@
 import path from "node:path";
 
-export default {
+const config = {
   resolve: {
     alias: {
       "@": path.resolve(__dirname),
@@ -10,3 +10,5 @@ export default {
     environment: "node",
   },
 };
+
+export default config;

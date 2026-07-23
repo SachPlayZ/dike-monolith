@@ -1,5 +1,7 @@
 "use client";
 
+import { networkConfig } from "./config";
+
 // Thin module-level init guard for StellarWalletsKit (static class).
 // Call initWalletKit() once before using any kit methods.
 
@@ -15,15 +17,9 @@ export async function initWalletKit(): Promise<void> {
     "@creit.tech/stellar-wallets-kit/modules/utils"
   );
 
-  const passphrase =
-    process.env.NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE ?? Networks.TESTNET;
-  const network = (Object.values(Networks) as string[]).includes(passphrase)
-    ? (passphrase as typeof Networks[keyof typeof Networks])
-    : Networks.TESTNET;
-
   StellarWalletsKit.init({
     modules: defaultModules(),
-    network,
+    network: networkConfig.network === "mainnet" ? Networks.PUBLIC : Networks.TESTNET,
   });
 
   _initialized = true;
@@ -44,11 +40,8 @@ export async function kitGetAddress(): Promise<string> {
 
 export async function kitSign(xdr: string): Promise<string> {
   const { StellarWalletsKit } = await import("@creit.tech/stellar-wallets-kit");
-  const networkPassphrase =
-    process.env.NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE ??
-    "Test SDF Network ; September 2015";
   const { signedTxXdr } = await StellarWalletsKit.signTransaction(xdr, {
-    networkPassphrase,
+    networkPassphrase: networkConfig.networkPassphrase,
   });
   return signedTxXdr;
 }

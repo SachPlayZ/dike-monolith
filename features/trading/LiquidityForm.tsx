@@ -138,7 +138,10 @@ export function LiquidityForm({ poolId, yesReserve, noReserve, totalLpShares }: 
     <Card size="sm" className="overflow-hidden py-0">
       {/* Collapsible header */}
       <button
+        type="button"
         onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        aria-controls="liquidity-form"
         className="w-full px-5 py-4 flex items-center justify-between border-b border-border hover:bg-muted/50 transition-colors duration-200"
       >
         <div className="text-left">
@@ -153,7 +156,7 @@ export function LiquidityForm({ poolId, yesReserve, noReserve, totalLpShares }: 
       </button>
 
       {expanded && (
-        <div className="p-5 space-y-4">
+        <div id="liquidity-form" className="p-5 space-y-4">
           {/* Add / Remove tab */}
           <Tabs value={mode} onValueChange={(v) => { setMode(v as Mode); setAmountInput(""); }}>
             <TabsList className="grid w-full grid-cols-2">
@@ -208,6 +211,8 @@ export function LiquidityForm({ poolId, yesReserve, noReserve, totalLpShares }: 
             </p>
             <div className="flex items-baseline gap-2">
               <input
+                aria-label={mode === "add" ? "USDC amount to add" : "LP shares to remove"}
+                inputMode="decimal"
                 type="number"
                 min="0"
                 step="0.01"

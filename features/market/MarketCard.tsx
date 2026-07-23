@@ -26,7 +26,8 @@ function ImpliedPrice({ yesBps }: { yesBps: number }) {
 export function MarketCard({ market }: MarketCardProps) {
   const expiry = new Date(market.config.expiry * 1000);
   const yesBps = impliedYesBps(market.yesReserve, market.noReserve);
-  const isTradeable = market.status === "Live";
+  const isTradeable = market.tradeable;
+  const isExpired = market.status === "Live" && !market.tradeable;
 
   return (
     <Link href={`/markets/${market.marketId}`} className="block">
@@ -38,6 +39,12 @@ export function MarketCard({ market }: MarketCardProps) {
             </p>
             <MarketStatusBadge status={market.status} />
           </div>
+
+          {isExpired && (
+            <p className="mt-2 text-xs font-medium text-yellow-700 dark:text-yellow-400">
+              Expired — awaiting on-chain closure
+            </p>
+          )}
 
           <div className="flex items-center gap-3 mt-3">
             {isTradeable && <ImpliedPrice yesBps={yesBps} />}

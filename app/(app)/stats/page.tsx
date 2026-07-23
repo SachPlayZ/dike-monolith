@@ -32,7 +32,7 @@ function truncateHash(hash: string) {
 }
 
 function TransactionRow({ transaction }: { transaction: StatsTransaction }) {
-  const explorerUrl = `https://stellar.expert/explorer/${networkConfig.network}/tx/${transaction.hash}`;
+  const explorerUrl = `https://stellar.expert/explorer/${networkConfig.explorerNetwork}/tx/${transaction.hash}`;
 
   return (
     <div className="grid gap-4 border-t border-white/10 px-5 py-5 transition-colors hover:bg-white/[0.025] md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_0.55fr_0.85fr_auto] md:items-center md:px-6">

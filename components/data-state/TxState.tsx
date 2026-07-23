@@ -31,7 +31,7 @@ function getVariant(status: string): AlertVariant {
 
 export function TxStateDisplay({
   state,
-  explorerBase = `https://stellar.expert/explorer/${networkConfig.network}/tx`,
+  explorerBase = `https://stellar.expert/explorer/${networkConfig.explorerNetwork}/tx`,
 }: TxStateProps) {
   if (state.status === "idle") return null;
 

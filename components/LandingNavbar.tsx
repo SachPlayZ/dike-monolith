@@ -67,6 +67,8 @@ export default function LandingNavbar() {
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+            aria-expanded={isDropdownOpen}
+            aria-controls="trading-menu"
             className="relative flex items-center gap-1 text-base font-normal tracking-wide transition-colors duration-300 hover:text-white/80 group"
           >
             trading
@@ -77,7 +79,7 @@ export default function LandingNavbar() {
           </button>
 
           {isDropdownOpen && (
-            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 py-3 min-w-40 backdrop-blur-md bg-linear-to-b from-white/10 to-white/5 border border-white/30 rounded-md shadow-xl shadow-black/50">
+            <div id="trading-menu" className="absolute top-full left-1/2 -translate-x-1/2 mt-4 py-3 min-w-40 backdrop-blur-md bg-linear-to-b from-white/10 to-white/5 border border-white/30 rounded-md shadow-xl shadow-black/50">
               <Link
                 href="/dashboard"
                 onClick={() => setIsDropdownOpen(false)}
@@ -120,6 +122,8 @@ export default function LandingNavbar() {
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           className="md:hidden flex items-center justify-center w-10 h-10 text-white border border-white/20 rounded-sm bg-white/5 hover:bg-white/10 transition-colors duration-300"
           aria-label="Toggle menu"
+          aria-expanded={isMobileMenuOpen}
+          aria-controls="landing-mobile-menu"
         >
           {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
@@ -127,6 +131,7 @@ export default function LandingNavbar() {
 
       {isMobileMenuOpen && (
         <div
+          id="landing-mobile-menu"
           ref={mobileMenuRef}
           className="md:hidden absolute top-full left-0 right-0 flex flex-col items-center gap-1 py-4 bg-black/90 backdrop-blur-md border-t border-white/10"
         >

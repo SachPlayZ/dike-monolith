@@ -74,6 +74,7 @@ export interface MarketData {
   noReserve: string;
   totalLpShares: string;
   createdAt: number;
+  tradeable: boolean;
 }
 
 export interface VaultAccounting {
@@ -149,11 +150,14 @@ export interface UserPosition {
   noBalance: string;
   lpShares: string;
   deposit: string;
-  rootStake: string;
+  rootStakeYes: string;
+  rootStakeNo: string;
   childCredit: string;
   childDebt: string;
-  parentDebt: string;
-  redeemedAmount: string;
+  parentDebtYes: string;
+  parentDebtNo: string;
+  redeemedYes: string;
+  redeemedNo: string;
   marketStatus: MarketStatus;
   finalOutcome: Outcome | null;
 }

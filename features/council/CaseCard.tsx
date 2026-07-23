@@ -2,6 +2,7 @@ import type { CouncilCase } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { safeReferenceUrl } from "@/lib/validation/reference-url";
 
 const STATUS_COLORS: Record<string, string> = {
   Opened: "bg-muted text-muted-foreground",
@@ -18,11 +19,20 @@ interface CaseCardProps {
 }
 
 export function CaseCard({ councilCase, onClick }: CaseCardProps) {
+  const evidenceUrl = safeReferenceUrl(councilCase.evidenceUri);
   return (
     <Card
       size="sm"
       className={cn(onClick ? "cursor-pointer hover:bg-muted/50 transition-colors" : "")}
       onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onClick();
+        }
+      } : undefined}
     >
       <CardContent className="space-y-3">
         <div className="flex items-center justify-between">
@@ -55,9 +65,9 @@ export function CaseCard({ councilCase, onClick }: CaseCardProps) {
           )}
         </div>
 
-        {councilCase.evidenceUri && (
+        {evidenceUrl && (
           <a
-            href={councilCase.evidenceUri}
+            href={evidenceUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs text-primary underline break-all"

@@ -25,7 +25,7 @@ async function CouncilCaseList() {
   } catch (e) {
     error =
       e instanceof ServiceUnavailableError
-        ? "dike-services is not running."
+        ? "Council data is temporarily unavailable. Please try again."
         : e instanceof Error
         ? e.message
         : "Failed to load cases";

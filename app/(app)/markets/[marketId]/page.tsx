@@ -10,12 +10,15 @@ import { UserPositionPanel } from "@/features/trading/UserPositionPanel";
 import { CloseTradingButton } from "@/features/market/CloseTradingButton";
 import { ResolutionPanel } from "@/features/resolution/ResolutionPanel";
 import { PageLoader } from "@/components/data-state/LoadingSpinner";
+import { LiveRefresh } from "@/components/data-state/LiveRefresh";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ServiceUnavailableError } from "@/lib/api/client";
 import { formatUsdc, impliedYesBps } from "@/lib/stellar/scval";
 import { cn } from "@/lib/utils";
+import { NetworkMismatchError } from "@/lib/stellar/config";
+import { safeReferenceUrl } from "@/lib/validation/reference-url";
 
 interface PageProps {
   params: Promise<{ marketId: string }>;
@@ -38,24 +41,33 @@ async function MarketDetailContent({ marketId }: { marketId: string }) {
       return (
         <Alert>
           <AlertDescription>
-            dike-services is not running. Start it to view market details.
+            Market data is temporarily unavailable. Please try again.
           </AlertDescription>
+        </Alert>
+      );
+    }
+    if (e instanceof NetworkMismatchError) {
+      return (
+        <Alert variant="destructive">
+          <AlertDescription>{e.message}</AlertDescription>
         </Alert>
       );
     }
     notFound();
   }
 
-  const isExpired = Date.now() / 1000 >= market.config.expiry;
-  const isTradeable = market.status === "Live" && !isExpired;
+  const isExpired = market.status === "Live" && !market.tradeable;
+  const isTradeable = market.tradeable;
   const yesBps = impliedYesBps(market.yesReserve, market.noReserve);
   const yesPercent = yesBps / 100;
   const noPercent = 100 - yesPercent;
   const expiry = new Date(market.config.expiry * 1000);
   const hasReserves = market.yesReserve !== "0" || market.noReserve !== "0";
+  const rulesUrl = safeReferenceUrl(market.config.rulesUri);
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
+      <LiveRefresh marketId={Number(market.marketId)} />
       {/* ── Left: Market Info ── */}
       <div className="lg:col-span-2 space-y-4">
 
@@ -104,15 +116,22 @@ async function MarketDetailContent({ marketId }: { marketId: string }) {
             ))}
           </div>
 
-          {market.config.rulesUri && (
+          {rulesUrl && (
             <a
-              href={market.config.rulesUri}
+              href={rulesUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 mt-4 text-xs text-primary hover:text-primary/80 transition-colors duration-200"
             >
               View Rules ↗
             </a>
+          )}
+          {market.config.rulesUri && !rulesUrl && (
+            <Alert variant="warning" className="mt-4">
+              <AlertDescription>
+                This market&apos;s rules URL is not a safe, public HTTPS link. Verify the on-chain rules hash before relying on it.
+              </AlertDescription>
+            </Alert>
           )}
           </CardContent>
         </Card>
@@ -195,7 +214,14 @@ async function MarketDetailContent({ marketId }: { marketId: string }) {
             <ChildTradeForm poolId={market.poolId} currentMarketId={market.marketId} />
           </>
         ) : market.status === "Live" && isExpired ? (
-          <CloseTradingButton marketId={market.marketId} expiry={market.config.expiry} />
+          <>
+            <Alert variant="warning">
+              <AlertDescription>
+                This market has expired. Trading is disabled while its on-chain status awaits closure.
+              </AlertDescription>
+            </Alert>
+            <CloseTradingButton marketId={market.marketId} isExpired />
+          </>
         ) : !market.poolId ? (
           <Card size="sm">
             <CardContent className="text-center">
