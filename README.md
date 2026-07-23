@@ -220,14 +220,16 @@ scripts/          # Contract binding generation utilities
 
 ## GitHub Actions CI/CD To EC2
 
-This repo includes two workflows that both run `npm ci`, `npm run build`, `npm test`, then SSH into EC2 and run [deploy-ec2.sh](/Users/sachplayz/Projects/Dike_Stellar/dike-services/scripts/deploy-ec2.sh:1):
+This repo includes two workflows that run dependency audit, lint, build, and tests before SSHing into EC2 and invoking [deploy-ec2.sh](scripts/deploy-ec2.sh):
 
 | Workflow | Trigger | App dir | Ports (live / candidate) |
 |---|---|---|---|
-| [deploy-ec2.yml](/Users/sachplayz/Projects/Dike_Stellar/dike-services/.github/workflows/deploy-ec2.yml:1) (testnet) | push to `main` | `~/dike-services` | `4000` / `4001` |
-| [deploy-ec2-mainnet.yml](/Users/sachplayz/Projects/Dike_Stellar/dike-services/.github/workflows/deploy-ec2-mainnet.yml:1) | push to `dike-mainnet` | `~/dike-services-mainnet` | `4100` / `4101` |
+| [deploy-ec2.yml](.github/workflows/deploy-ec2.yml) (testnet) | push to `main` | `~/dike-services` | `4000` / `4001` |
+| [deploy-ec2-mainnet.yml](.github/workflows/deploy-ec2-mainnet.yml) | push to `dike-mainnet` | `~/dike-services-mainnet` | `4100` / `4101` |
 
 `deploy-ec2.sh` reads `BRANCH`, `PORT`, and `CANDIDATE_PORT` (each falling back to the testnet defaults above) so the same script drives both deploys — the mainnet workflow just passes different values and a `-mainnet` suffixed `APP_NAME`/`IMAGE_NAME`.
+
+Deployments build a revision-tagged image and health-check it on the candidate port. The current container is retained until the replacement passes its live-port health check; a failed switchover restarts the retained container automatically.
 
 On the EC2 instance, the repo should already be cloned at:
 
@@ -262,3 +264,7 @@ EC2_APP_DIR=/home/ec2-user/dike-services
 `EC2_APP_DIR` is optional. If omitted, the workflow uses `/home/ec2-user/dike-services`.
 
 If the GitHub repo is private, make sure the EC2 instance can run `git pull`. The easiest setup is to add an SSH deploy key to GitHub and clone the repo on EC2 using the SSH URL.
+
+## License
+
+Apache-2.0. See [LICENSE](LICENSE).

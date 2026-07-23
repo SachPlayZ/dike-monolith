@@ -263,7 +263,7 @@ describe("IndexerWorker", () => {
     expect(getEvents).not.toHaveBeenCalled();
   });
 
-  it("dead-letters dispatch failures and still advances the checkpoint", async () => {
+  it("retains the checkpoint when event processing fails so the event can replay", async () => {
     const value = StellarSdk.nativeToScVal(0).toXDR("base64");
     const topic = [StellarSdk.nativeToScVal("status").toXDR("base64")];
     const { worker, recordRawEvent, noteMismatch, advanceCheckpoint } = makeWorker({
@@ -287,9 +287,9 @@ describe("IndexerWorker", () => {
       "testnet",
       "market_registry",
       "event-1",
-      expect.stringContaining("dead-lettered event"),
+      expect.stringContaining("checkpoint retained for replay"),
     );
-    expect(advanceCheckpoint).toHaveBeenCalled();
+    expect(advanceCheckpoint).not.toHaveBeenCalled();
   });
 
   it("does not start a second tick while one is already running", async () => {

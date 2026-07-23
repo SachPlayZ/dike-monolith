@@ -262,7 +262,13 @@ export class EventDispatcher {
         const poolId = numericValue(topicValues[1]);
         const lp = firstString(topicValues, payload, [2], []);
         if (hasNumericValue(poolId) && lp) {
-          await this.reconciliation.recordLpFeesClaimed(poolId, lp, amountValue(payload), latestLedger);
+          await this.reconciliation.recordLpFeesClaimed(
+            poolId,
+            lp,
+            amountValue(payload),
+            latestLedger,
+            event.eventId,
+          );
         }
         return;
       }

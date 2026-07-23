@@ -239,8 +239,8 @@ export class StateRepository {
 
   async upsertCouncilVote(summary: Record<string, unknown>) {
     const { columns, values, assignments, placeholders } = this.buildUpsertSpec("council_votes", summary, [
-      "network", "case_id", "voter", "commitment", "revealed_outcome", "claimed",
-      "last_reconciled_ledger", "reconciled_at",
+      "network", "case_id", "voter", "has_commit", "has_reveal", "revealed_outcome",
+      "claimed_reward", "correct", "reward_amount",
     ]);
 
     await this.pool.query(
@@ -378,13 +378,20 @@ export class StateRepository {
     );
   }
 
-  async addLpFeesClaimed(network: string, poolId: number, owner: string, amount: string) {
+  async addLpFeesClaimed(network: string, poolId: number, owner: string, amount: string, eventId: string) {
     await this.pool.query(
-      `UPDATE lp_positions
-       SET fees_claimed = (COALESCE(fees_claimed, '0')::numeric + $4::numeric)::text,
+      `WITH inserted AS (
+         INSERT INTO lp_fee_claim_events (network, event_id, pool_id, owner, amount)
+         VALUES ($1, $5, $2, $3, $4)
+         ON CONFLICT (network, event_id) DO NOTHING
+         RETURNING amount
+       )
+       UPDATE lp_positions
+       SET fees_claimed = (COALESCE(fees_claimed, '0')::numeric + (SELECT amount::numeric FROM inserted))::text,
            updated_at = NOW()
-       WHERE network = $1 AND pool_id = $2 AND owner = $3`,
-      [network, poolId, owner, amount],
+       WHERE network = $1 AND pool_id = $2 AND owner = $3
+         AND EXISTS (SELECT 1 FROM inserted)`,
+      [network, poolId, owner, amount, eventId],
     );
   }
 

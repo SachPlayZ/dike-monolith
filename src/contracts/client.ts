@@ -137,6 +137,13 @@ export class DikeContractClient {
     return this.rpc._getEvents(request);
   }
 
+  async getNextMarketId() {
+    return this.simulateContractRead(
+      this.manifest.data.contracts.market_factory,
+      "next_market_id",
+    ) as Promise<bigint | number>;
+  }
+
   async getMarket(marketId: number) {
     return readOk(this.clients.marketRegistry.get_market({ market_id: BigInt(marketId) }));
   }

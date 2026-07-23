@@ -3,6 +3,7 @@ import { ScheduledJobs } from "./scheduled.js";
 
 function makeJob(overrides?: {
   marketIds?: number[];
+  nextMarketId?: number;
   reconcileVaultImpl?: ReturnType<typeof vi.fn>;
 }) {
   const repository = {
@@ -27,6 +28,7 @@ function makeJob(overrides?: {
 
   const contracts = {
     getLatestLedger: vi.fn().mockResolvedValue({ sequence: 100 }),
+    getNextMarketId: vi.fn().mockResolvedValue(overrides?.nextMarketId ?? 3),
   };
 
   const logger = {
@@ -48,6 +50,31 @@ function makeJob(overrides?: {
 }
 
 describe("ScheduledJobs.tick", () => {
+  it("recovers markets missing from the projection using the factory counter", async () => {
+    const { job, reconciliation } = makeJob({ marketIds: [1], nextMarketId: 4 });
+
+    await job.tick();
+
+    expect(reconciliation.reconcileMarket).toHaveBeenCalledTimes(3);
+    expect(reconciliation.reconcileMarket).toHaveBeenCalledWith(3, 100);
+    expect(reconciliation.reconcileMarket).toHaveBeenCalledWith(2, 100);
+    expect(reconciliation.reconcileMarket).toHaveBeenCalledWith(1, 100);
+  });
+
+  it("falls back to known markets when factory discovery fails", async () => {
+    const { job, contracts, reconciliation, logger } = makeJob({ marketIds: [2] });
+    contracts.getNextMarketId.mockRejectedValueOnce(new Error("RPC unavailable"));
+
+    await job.tick();
+
+    expect(reconciliation.reconcileMarket).toHaveBeenCalledOnce();
+    expect(reconciliation.reconcileMarket).toHaveBeenCalledWith(2, 100);
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: "market_discovery" }),
+      expect.stringContaining("known markets only"),
+    );
+  });
+
   it("still reconciles later markets when an earlier market's vault reconciliation throws", async () => {
     const reconcileVault = vi
       .fn()

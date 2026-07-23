@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 const contractsRoot =
-  process.env.DIKE_CONTRACTS_ROOT ?? "/Users/sachplayz/Projects/Dike_Stellar/dike-contracts";
+  process.env.DIKE_CONTRACTS_ROOT ?? path.resolve(process.cwd(), "../dike-contracts");
 const wasmRoot = path.join(contractsRoot, "target", "stellar");
 const outputRoot = path.join(process.cwd(), "src", "contracts", "generated");
 

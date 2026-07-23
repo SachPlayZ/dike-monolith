@@ -47,6 +47,41 @@ describe("StateRepository", () => {
     expect(params).toEqual(["testnet", "CCONTRACT", 100]);
   });
 
+  it("accepts the council vote columns defined by the schema", async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [], rowCount: 1 });
+    const repository = new StateRepository({ query } as never);
+
+    await repository.upsertCouncilVote({
+      network: "testnet",
+      case_id: 7,
+      voter: "GVOTER",
+      has_commit: true,
+      has_reveal: true,
+      revealed_outcome: "Yes",
+      claimed_reward: true,
+      correct: true,
+      reward_amount: "100",
+    });
+
+    const sql = query.mock.calls[0]?.[0] as string;
+    expect(sql).toContain("has_commit");
+    expect(sql).toContain("has_reveal");
+    expect(sql).toContain("claimed_reward");
+    expect(sql).toContain("reward_amount");
+  });
+
+  it("records LP fee claims idempotently by event id", async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [], rowCount: 1 });
+    const repository = new StateRepository({ query } as never);
+
+    await repository.addLpFeesClaimed("testnet", 2, "GLP", "25", "event-1");
+
+    const sql = query.mock.calls[0]?.[0] as string;
+    expect(sql).toContain("INSERT INTO lp_fee_claim_events");
+    expect(sql).toContain("ON CONFLICT (network, event_id) DO NOTHING");
+    expect(query.mock.calls[0]?.[1]).toEqual(["testnet", 2, "GLP", "25", "event-1"]);
+  });
+
   it("builds private stats from unique participants and indexed transactions", async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [{ count: "3" }], rowCount: 1 })

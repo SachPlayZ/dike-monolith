@@ -2,6 +2,7 @@
   "name": "dike-services",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "engines": {
     "node": ">=20.0.0"
@@ -12,6 +13,7 @@
     "start:prod": "npm run migrate:prod && node dist/src/index.js",
     "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
+    "audit": "npm audit --omit=dev --audit-level=high",
     "test": "vitest run",
     "test:watch": "vitest",
     "migrate": "tsx src/db/run-migrations.ts",
@@ -19,12 +21,12 @@
     "bindings:generate": "tsx scripts/generate-bindings.ts"
   },
   "dependencies": {
-    "@fastify/cors": "^11.1.0",
+    "@fastify/cors": "^11.3.0",
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/sensible": "^6.0.3",
-    "@stellar/stellar-sdk": "^16.0.1",
+    "@stellar/stellar-sdk": "^16.1.0",
     "dotenv": "^17.2.1",
-    "fastify": "^5.9.0",
+    "fastify": "^5.10.0",
     "ioredis": "^5.11.1",
     "pg": "^8.22.0",
     "pino": "^10.3.1",

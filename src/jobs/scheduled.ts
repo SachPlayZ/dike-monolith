@@ -45,7 +45,8 @@ export class ScheduledJobs {
         this.reconciliation.reconcileGovernance(latestLedger.sequence),
       );
 
-      const marketIds = await this.repository.listKnownMarketIds(this.network);
+      const knownMarketIds = await this.repository.listKnownMarketIds(this.network);
+      const marketIds = await this.discoverMarketIds(knownMarketIds);
       const marketPools = await this.repository.listKnownMarketPools(this.network);
       const poolByMarket = new Map(marketPools.map(({ marketId, poolId }) => [marketId, poolId]));
 
@@ -98,6 +99,27 @@ export class ScheduledJobs {
       await step();
     } catch (error) {
       this.logger.error({ error, ...context }, "Reconciliation step failed; continuing with remaining items");
+    }
+  }
+
+  private async discoverMarketIds(knownMarketIds: number[]) {
+    try {
+      const nextMarketId = Number(await this.contracts.getNextMarketId());
+      if (!Number.isSafeInteger(nextMarketId) || nextMarketId < 1) {
+        throw new Error(`Invalid next market id: ${nextMarketId}`);
+      }
+
+      const marketIds = new Set(knownMarketIds);
+      for (let marketId = 1; marketId < nextMarketId; marketId += 1) {
+        marketIds.add(marketId);
+      }
+      return [...marketIds];
+    } catch (error) {
+      this.logger.error(
+        { error, scope: "market_discovery" },
+        "Unable to discover markets from factory counter; reconciling known markets only",
+      );
+      return knownMarketIds;
     }
   }
 }

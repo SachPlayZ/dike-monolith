@@ -16,6 +16,7 @@ import { collectHealth } from "../observability/health.js";
 import { createLogger } from "../observability/logger.js";
 import { MetricsStore } from "../observability/metrics.js";
 import { jsonReplacer } from "../contracts/codecs.js";
+import { eventBus } from "../observability/event-bus.js";
 import { parseAddress, parseCouncilCaseStatus, parseMarketId, parseMarketListQuery } from "./request-validation.js";
 
 declare module "fastify" {
@@ -125,6 +126,34 @@ export async function buildApp() {
 
   app.get("/metrics", async (_, reply) => {
     sendJson(reply, services.metrics.snapshot());
+  });
+
+  // Push channel for state changes as they're written, so clients don't have
+  // to poll at some interval and eat the resulting staleness window.
+  app.get("/stream", (request, reply) => {
+    reply.hijack();
+    const res = reply.raw;
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    res.write("retry: 2000\n\n");
+
+    const unsubscribe = eventBus.subscribe((update) => {
+      if (update.network !== services.manifest.data.network) return;
+      res.write(`event: update\ndata: ${JSON.stringify(update)}\n\n`);
+    });
+
+    const heartbeat = setInterval(() => {
+      res.write(": ping\n\n");
+    }, 15_000);
+
+    request.raw.on("close", () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+    });
   });
 
   app.get("/admin/stats", async (_, reply) => {

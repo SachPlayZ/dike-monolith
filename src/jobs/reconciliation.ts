@@ -5,6 +5,7 @@ import type { StateRepository } from "../db/repositories/state-repository.js";
 import type { Outcome } from "../domain/types.js";
 import type { Logger } from "../observability/logger.js";
 import type { MetricsStore } from "../observability/metrics.js";
+import { eventBus } from "../observability/event-bus.js";
 
 const OUTCOMES: Outcome[] = ["Yes", "No", "Invalid"];
 
@@ -181,6 +182,7 @@ export class ReconciliationService {
       );
     }
     this.logger.debug({ latestLedger }, "Governance reconciliation complete");
+    eventBus.publish({ type: "governance", network });
   }
 
   async reconcileMarket(marketId: number, latestLedger: number) {
@@ -214,6 +216,7 @@ export class ReconciliationService {
       last_reconciled_ledger: latestLedger,
       reconciled_at: new Date().toISOString(),
     });
+    eventBus.publish({ type: "market", network: this.manifest.data.network, marketId });
 
     if (typeof market.pool_id === "bigint" || typeof market.pool_id === "number") {
       await this.reconcilePool(Number(market.pool_id), latestLedger);
@@ -251,13 +254,14 @@ export class ReconciliationService {
       last_reconciled_ledger: latestLedger,
       reconciled_at: new Date().toISOString(),
     });
-    return {
-      pool,
-      normalized,
-      marketId: typeof normalized.market_id === "string" || typeof normalized.market_id === "number"
+    const marketId =
+      typeof normalized.market_id === "string" || typeof normalized.market_id === "number"
         ? Number(normalized.market_id)
-        : undefined,
-    };
+        : undefined;
+    if (marketId !== undefined) {
+      eventBus.publish({ type: "market", network: this.manifest.data.network, marketId });
+    }
+    return { pool, normalized, marketId };
   }
 
   async reconcileRequest(requestId: number, latestLedger: number) {
@@ -287,6 +291,13 @@ export class ReconciliationService {
       last_reconciled_ledger: latestLedger,
       reconciled_at: new Date().toISOString(),
     });
+    if (typeof normalized.market_id === "string" || typeof normalized.market_id === "number") {
+      eventBus.publish({
+        type: "market",
+        network: this.manifest.data.network,
+        marketId: Number(normalized.market_id),
+      });
+    }
 
     try {
       const caseId = await this.contracts.getCaseForRequest(requestId);
@@ -324,6 +335,7 @@ export class ReconciliationService {
       last_reconciled_ledger: latestLedger,
       reconciled_at: new Date().toISOString(),
     });
+    eventBus.publish({ type: "council_case", network: this.manifest.data.network, caseId });
   }
 
   async reconcileVault(marketId: number, latestLedger: number) {
@@ -336,6 +348,7 @@ export class ReconciliationService {
       last_reconciled_ledger: latestLedger,
       reconciled_at: new Date().toISOString(),
     });
+    eventBus.publish({ type: "market", network: this.manifest.data.network, marketId });
   }
 
   async reconcileUserPosition(
@@ -365,6 +378,7 @@ export class ReconciliationService {
         last_reconciled_ledger: latestLedger,
         reconciled_at: new Date().toISOString(),
       });
+      eventBus.publish({ type: "portfolio", network: this.manifest.data.network, address: owner });
     }
   }
 
@@ -384,11 +398,24 @@ export class ReconciliationService {
       last_reconciled_ledger: latestLedger,
       reconciled_at: new Date().toISOString(),
     });
+    eventBus.publish({ type: "portfolio", network: this.manifest.data.network, address: owner });
   }
 
-  async recordLpFeesClaimed(poolId: number, owner: string, amount: string, latestLedger: number) {
+  async recordLpFeesClaimed(
+    poolId: number,
+    owner: string,
+    amount: string,
+    latestLedger: number,
+    eventId: string,
+  ) {
     await this.reconcileLpPosition(poolId, owner, latestLedger);
-    await this.repository.addLpFeesClaimed(this.manifest.data.network, poolId, owner, amount);
+    await this.repository.addLpFeesClaimed(
+      this.manifest.data.network,
+      poolId,
+      owner,
+      amount,
+      eventId,
+    );
   }
 
   async reconcileUserVaultState(marketId: number, owner: string, latestLedger: number) {
@@ -439,6 +466,7 @@ export class ReconciliationService {
       last_reconciled_ledger: latestLedger,
       reconciled_at: new Date().toISOString(),
     });
+    eventBus.publish({ type: "portfolio", network: this.manifest.data.network, address: owner });
   }
 
   async reconcileTimelockAction(actionId: number, latestLedger: number) {
@@ -461,5 +489,6 @@ export class ReconciliationService {
       reconciled_at: new Date().toISOString(),
     });
     this.logger.debug({ actionId, latestLedger }, "Timelock action reconciliation complete");
+    eventBus.publish({ type: "timelock_action", network: this.manifest.data.network, actionId });
   }
 }

@@ -12,9 +12,11 @@ function makeDispatcher() {
     reconcileUserPosition: vi.fn().mockResolvedValue(undefined),
     reconcileLpPosition: vi.fn().mockResolvedValue(undefined),
     reconcileUserVaultState: vi.fn().mockResolvedValue(undefined),
+    recordLpFeesClaimed: vi.fn().mockResolvedValue(undefined),
   };
   const repository = {
     upsertTimelockAction: vi.fn(),
+    upsertCouncilVote: vi.fn().mockResolvedValue(undefined),
     insertTrade: vi.fn().mockResolvedValue(undefined),
     insertLiquidityEvent: vi.fn().mockResolvedValue(undefined),
   };
@@ -60,6 +62,61 @@ function makeDispatcher() {
 }
 
 describe("EventDispatcher", () => {
+  it("persists council commit, reveal, and reward fields using the database schema", async () => {
+    const { dispatcher, repository } = makeDispatcher();
+    const baseEvent = {
+      network: "testnet",
+      contractId: "CCOUNCIL",
+      ledger: 100,
+      txHash: "tx",
+      rawEvent: {},
+    };
+
+    await dispatcher.dispatch({
+      ...baseEvent,
+      eventId: "commit-1",
+      topic: "commit",
+      topicValues: ["commit", 3n, "GVOTER"],
+      payload: "hash",
+    });
+    await dispatcher.dispatch({
+      ...baseEvent,
+      eventId: "reveal-1",
+      topic: "reveal",
+      topicValues: ["reveal", 3n, "GVOTER"],
+      payload: [{ tag: "No" }],
+    });
+    await dispatcher.dispatch({
+      ...baseEvent,
+      eventId: "reward-1",
+      topic: "reward",
+      topicValues: ["reward", 3n, "GVOTER"],
+      payload: [true, 25n],
+    });
+
+    expect(repository.upsertCouncilVote).toHaveBeenNthCalledWith(1, {
+      network: "testnet",
+      case_id: 3,
+      voter: "GVOTER",
+      has_commit: true,
+    });
+    expect(repository.upsertCouncilVote).toHaveBeenNthCalledWith(2, {
+      network: "testnet",
+      case_id: 3,
+      voter: "GVOTER",
+      has_reveal: true,
+      revealed_outcome: "No",
+    });
+    expect(repository.upsertCouncilVote).toHaveBeenNthCalledWith(3, {
+      network: "testnet",
+      case_id: 3,
+      voter: "GVOTER",
+      claimed_reward: true,
+      correct: true,
+      reward_amount: "25",
+    });
+  });
+
   it("routes registry final events to markets", async () => {
     const { dispatcher, reconciliation } = makeDispatcher();
 

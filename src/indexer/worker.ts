@@ -75,6 +75,7 @@ export class IndexerWorker {
       }
       const deployments = await this.repository.getDeployments(this.manifest.data.network);
       for (const deployment of deployments) {
+        let processingSucceeded = true;
         const batch = await this.eventSource.pollContract(
           deployment.contract_id,
           deployment.module,
@@ -86,21 +87,23 @@ export class IndexerWorker {
             await this.repository.recordRawEvent(event);
             await this.dispatcher.dispatch(event);
           } catch (error) {
+            processingSucceeded = false;
             this.metrics.noteProcessingFailure();
             await this.repository.noteMismatch(
               this.manifest.data.network,
               deployment.module,
               event.eventId,
-              `dead-lettered event after dispatch failure: ${String(error)}`,
+              `event processing failed; checkpoint retained for replay: ${String(error)}`,
             );
             this.logger.error(
               { error, contractId: deployment.contract_id, eventId: event.eventId, module: deployment.module },
-              "Dispatch failed for event; skipping after dead-letter record",
+              "Event processing failed; retaining checkpoint for replay",
             );
+            break;
           }
         }
 
-        if (batch.complete) {
+        if (batch.complete && processingSucceeded) {
           if (batch.resetCheckpoint) {
             await this.repository.resetCheckpoint(
               this.manifest.data.network,
@@ -115,7 +118,7 @@ export class IndexerWorker {
               batch.cursor,
             );
           }
-        } else {
+        } else if (!batch.complete) {
           this.logger.warn(
             {
               contractId: deployment.contract_id,
@@ -123,6 +126,15 @@ export class IndexerWorker {
               checkpointLedger: batch.checkpointLedger,
             },
             "Skipping checkpoint advance for incomplete event window",
+          );
+        } else {
+          this.logger.warn(
+            {
+              contractId: deployment.contract_id,
+              module: deployment.module,
+              checkpointLedger: batch.checkpointLedger,
+            },
+            "Skipping checkpoint advance because event processing failed",
           );
         }
       }

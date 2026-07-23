@@ -4,10 +4,10 @@
 
 `dike-services` is the backend, indexing, and query layer for Dike Protocol. It should be a Node.js TypeScript service stack that consumes Stellar RPC, indexes Soroban contract events, reconciles critical state with direct contract reads, stores query-ready state in Postgres, and exposes APIs for `dike-web`.
 
-The service must treat `/Users/sachplayz/Projects/Dike_Stellar/dike-contracts` as the canonical source for contract interfaces, deployment manifests, enum names, and market lifecycle rules. The initial target manifest is:
+The service must treat the sibling `dike-contracts` repository as the canonical source for contract interfaces, deployment manifests, enum names, and market lifecycle rules. The initial target manifest is:
 
 ```text
-/Users/sachplayz/Projects/Dike_Stellar/dike-contracts/deployments/testnet.json
+../dike-contracts/deployments/testnet.json
 ```
 
 The service does not custody user keys. It may build unsigned transaction payloads in a later phase, but user signing must remain in the browser wallet.
@@ -91,8 +91,8 @@ STELLAR_RPC_URL=https://soroban-testnet.stellar.org
 STELLAR_HORIZON_URL=https://horizon-testnet.stellar.org
 STELLAR_NETWORK_PASSPHRASE=Test SDF Network ; September 2015
 
-DIKE_CONTRACTS_ROOT=/Users/sachplayz/Projects/Dike_Stellar/dike-contracts
-DIKE_MANIFEST_PATH=/Users/sachplayz/Projects/Dike_Stellar/dike-contracts/deployments/testnet.json
+DIKE_CONTRACTS_ROOT=../dike-contracts
+DIKE_MANIFEST_PATH=./deployments/testnet.json
 
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/dike_services
 REDIS_URL=redis://localhost:6379
