@@ -15,6 +15,7 @@ import type { Logger } from "../observability/logger.js";
 
 export interface FeeSponsorshipServiceOptions {
   enabled: boolean;
+  network: string;
   networkPassphrase: string;
   contracts: DikeManifestContracts;
   feePolicy: FeePolicy;
@@ -28,6 +29,22 @@ export interface FeeSponsorshipServiceOptions {
 
 export class FeeSponsorshipService {
   constructor(private readonly options: FeeSponsorshipServiceOptions) {}
+
+  status() {
+    const configured = this.options.enabled && this.options.signer.publicKey().length > 0;
+    return {
+      enabled: this.options.enabled,
+      available: configured,
+      network: this.options.network,
+      sponsorAddress: configured ? this.options.signer.publicKey() : null,
+      limits: {
+        baseFeeStroops: this.options.feePolicy.baseFeeStroops,
+        maxTotalFeeStroops: this.options.feePolicy.maxTotalFeeStroops,
+        maxResourceFeeStroops: this.options.feePolicy.maxResourceFeeStroops,
+      },
+      reason: configured ? null : this.options.enabled ? "sponsor_not_configured" : "disabled",
+    };
+  }
 
   async sponsor(body: unknown, ip: string): Promise<SponsorshipResult> {
     this.options.metrics?.noteSponsorshipRequested();

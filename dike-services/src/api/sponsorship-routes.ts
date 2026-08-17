@@ -7,6 +7,8 @@ export function registerSponsorshipRoutes(
   app: FastifyInstance<any, any, any, any, any>,
   service: FeeSponsorshipService,
 ) {
+  app.get("/sponsorship/status", async (_request, reply) => reply.send(service.status()));
+
   app.post("/sponsorship/transactions", { bodyLimit: 200_000 }, async (request, reply) => {
     try {
       const body = parseSponsorshipRequest(request.body);

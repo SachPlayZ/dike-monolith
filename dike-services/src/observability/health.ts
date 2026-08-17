@@ -7,6 +7,7 @@ export async function collectHealth(
   redis: { ping: () => Promise<unknown> },
   contracts: DikeContractClient,
   metrics: MetricsStore,
+  sponsorship?: { status: () => unknown },
 ) {
   const [rpcResult, latestLedgerResult, dbResult, redisResult] = await Promise.allSettled([
     contracts.getHealth(),
@@ -27,6 +28,7 @@ export async function collectHealth(
     redis: redisOk ? "ok" : "error",
     rpc: rpcOk ? rpcResult.value.status : "error",
     latestLedger: ledgerOk ? latestLedgerResult.value.sequence : null,
+    sponsorship: sponsorship?.status() ?? { enabled: false, available: false, reason: "not_configured" },
     metrics: metrics.snapshot(),
   };
 }

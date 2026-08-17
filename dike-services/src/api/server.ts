@@ -134,6 +134,7 @@ export async function buildApp() {
       services.redis,
       services.contracts,
       services.metrics,
+      services.sponsorship,
     );
     sendJson(reply, health);
   });

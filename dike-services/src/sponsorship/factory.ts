@@ -31,6 +31,7 @@ export function createFeeSponsorshipService(
     : disabledSigner();
   return new FeeSponsorshipService({
     enabled: env.FEE_SPONSOR_ENABLED,
+    network: env.STELLAR_NETWORK,
     networkPassphrase: env.STELLAR_NETWORK_PASSPHRASE,
     contracts: manifest.data.contracts,
     feePolicy: {

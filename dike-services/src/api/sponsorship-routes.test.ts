@@ -3,6 +3,16 @@ import { describe, expect, it } from "vitest";
 import { registerSponsorshipRoutes } from "./sponsorship-routes.js";
 
 describe("sponsorship routes", () => {
+  it("exposes non-secret sponsorship status", async () => {
+    const app = Fastify();
+    registerSponsorshipRoutes(app, {
+      status: () => ({ enabled: true, available: true, network: "testnet", sponsorAddress: "G..." }),
+    } as never);
+    const response = await app.inject({ method: "GET", url: "/sponsorship/status" });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ available: true, network: "testnet" });
+  });
+
   it("returns a stable success payload", async () => {
     const app = Fastify();
     registerSponsorshipRoutes(app, {
