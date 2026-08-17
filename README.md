@@ -38,7 +38,7 @@ This section maps the project to the Level 6 requirements and makes the remainin
 | Public production application | [mainnet.dikeprotocol.xyz](https://mainnet.dikeprotocol.xyz) | ✅ Live URL supplied |
 | Real adoption | 20+ verified mainnet users with real on-chain transaction activity | ✅ Reported complete; link wallet/transaction evidence in the submission |
 | Security | Mentor-led smart-contract audit/security review, alongside the documented tests and runbook | ✅ Completed; retain the mentor approval artifact |
-| Product marketing | [Dike Protocol on X](https://x.com/DikeProtocol), launch/demo content, and the public production app | ✅ Published on X |
+| Product marketing | [Dike Protocol on X](https://x.com/DikeProtocol), [demo video](https://youtu.be/gr1-riQu5R8), and the public production app | ✅ Published |
 | Ecosystem contribution | Technical/community contribution completed by the team | ✅ Completed; include the public artifact URL |
 | Technical standards | Full setup docs plus preserved history from the original component repositories | ✅ Documentation and commit threshold met |
 
@@ -68,7 +68,7 @@ Mainnet collateral is the Circle USDC Stellar Asset Contract [`CCW67TSZV3SSS2HXM
 
 - **Adoption:** 20+ verified mainnet users and real transaction activity are complete; attach the wallet list and representative Stellar Expert transaction pages.
 - **Security:** mentor-led audit/security review is complete; attach the written mentor/team approval artifact.
-- **Marketing:** launch and demo/showcase content is published on [Dike Protocol's X profile](https://x.com/DikeProtocol); attach the direct post URLs.
+- **Marketing:** launch content is published on [Dike Protocol's X profile](https://x.com/DikeProtocol), with the [demo video](https://youtu.be/gr1-riQu5R8) available for showcase evidence.
 - **Ecosystem contribution:** contribution is complete; attach the public technical/community artifact URL.
 
 ## Architecture
@@ -291,3 +291,4 @@ Network, passphrase, manifest, and endpoint mismatches are intentionally treated
 - [Backend/indexer details](dike-services/README.md)
 - [Frontend and wallet details](dike-web/README.md)
 - [Protocol design plan](dike-contracts/PLAN.md)
+- [Product demo video](https://youtu.be/gr1-riQu5R8)
