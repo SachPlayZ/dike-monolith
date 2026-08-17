@@ -58,7 +58,7 @@ async function createServices() {
   const metrics = new MetricsStore();
   const repository = new StateRepository(db);
   const contracts = new DikeContractClient(env, manifest, logger);
-  const sponsorship = createFeeSponsorshipService(env, manifest, redis, contracts.rpc);
+  const sponsorship = createFeeSponsorshipService(env, manifest, redis, contracts.rpc, metrics, logger);
   const reconciliation = new ReconciliationService(manifest, contracts, repository, logger, metrics);
   const indexer = new IndexerWorker(env, manifest, contracts, repository, reconciliation, logger, metrics);
   const scheduledJobs = new ScheduledJobs(

@@ -10,6 +10,8 @@ import { SponsorshipError, type SponsorshipResult } from "./types.js";
 import { verifyInnerSourceSignature } from "./signature.js";
 import { parseSponsoredInnerTransaction } from "./validator.js";
 import type { RedisSponsorshipQuota, BudgetReservation } from "./quota.js";
+import type { MetricsStore } from "../observability/metrics.js";
+import type { Logger } from "../observability/logger.js";
 
 export interface FeeSponsorshipServiceOptions {
   enabled: boolean;
@@ -20,12 +22,15 @@ export interface FeeSponsorshipServiceOptions {
   quota: RedisSponsorshipQuota;
   replay: RedisSponsorshipReplay;
   submitter: RpcSponsorshipSubmitter;
+  metrics?: MetricsStore;
+  logger?: Logger;
 }
 
 export class FeeSponsorshipService {
   constructor(private readonly options: FeeSponsorshipServiceOptions) {}
 
   async sponsor(body: unknown, ip: string): Promise<SponsorshipResult> {
+    this.options.metrics?.noteSponsorshipRequested();
     if (!this.options.enabled) {
       throw new SponsorshipError("SPONSORSHIP_DISABLED", "Fee sponsorship is not enabled.");
     }
@@ -38,6 +43,8 @@ export class FeeSponsorshipService {
     verifyInnerSourceSignature(parsed);
     assertAllowedContractCall(parsed, this.options.contracts);
     const quote = quoteSponsoredFee(parsed, this.options.feePolicy);
+    this.options.metrics?.noteSponsorshipAccepted(quote.outerFee);
+    const startedAt = Date.now();
 
     const terminal = await this.options.replay.terminal(parsed.hash);
     if (terminal) return this.replayResult(terminal);
@@ -62,9 +69,18 @@ export class FeeSponsorshipService {
         ...(submitted.returnValueXdr ? { returnValueXdr: submitted.returnValueXdr } : {}),
       };
       await this.options.replay.complete(parsed.hash, lockToken, { status: "success", result });
+      this.options.metrics?.noteSponsorshipCompleted("confirmed", Date.now() - startedAt);
+      this.options.logger?.info({ event: "fee_sponsorship", innerHash: parsed.hash, outerHash: result.outerHash, source: parsed.source, method: parsed.method, outcome: "confirmed" }, "fee sponsorship completed");
       return result;
     } catch (error) {
       const safeCode = error instanceof SponsorshipError ? error.code : "RPC_REJECTED";
+      const outcome = safeCode === "CONFIRMATION_TIMEOUT"
+        ? "timeout"
+        : safeCode === "TRANSACTION_FAILED"
+          ? "failed"
+          : "rejected";
+      this.options.metrics?.noteSponsorshipCompleted(outcome, Date.now() - startedAt, safeCode);
+      this.options.logger?.warn({ event: "fee_sponsorship", innerHash: parsed.hash, source: parsed.source, method: parsed.method, outcome, code: safeCode }, "fee sponsorship failed");
       if (reservation && !submissionStarted) await this.options.quota.releaseBudget(reservation);
       if (submissionStarted) {
         await this.options.replay.complete(parsed.hash, lockToken, { status: "failure", code: safeCode });

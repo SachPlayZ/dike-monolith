@@ -6,6 +6,8 @@ import { RedisSponsorshipReplay, type RedisReplayClient } from "./replay.js";
 import { FeeSponsorshipService } from "./service.js";
 import { createSeedSponsorSigner, type SponsorSigner } from "./signer.js";
 import { RpcSponsorshipSubmitter } from "./submitter.js";
+import type { MetricsStore } from "../observability/metrics.js";
+import type { Logger } from "../observability/logger.js";
 
 type RedisClient = RedisEvalClient & RedisReplayClient;
 
@@ -21,6 +23,8 @@ export function createFeeSponsorshipService(
   manifest: LoadedManifest,
   redis: RedisClient,
   rpc: StellarSdk.rpc.Server,
+  metrics?: MetricsStore,
+  logger?: Logger,
 ) {
   const signer = env.FEE_SPONSOR_SEED
     ? createSeedSponsorSigner(env.FEE_SPONSOR_SEED)
@@ -49,5 +53,7 @@ export function createFeeSponsorshipService(
     submitter: new RpcSponsorshipSubmitter(rpc, {
       timeoutSeconds: env.FEE_SPONSOR_CONFIRMATION_TIMEOUT_SECONDS,
     }),
+    ...(metrics ? { metrics } : {}),
+    ...(logger ? { logger } : {}),
   });
 }
