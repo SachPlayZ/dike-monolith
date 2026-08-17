@@ -15,7 +15,8 @@ import {
 import { apiGet } from "@/lib/api/client";
 import { fetchRawPortfolio } from "@/lib/api/portfolio";
 import { normalizeMarketData } from "@/lib/api/normalizers";
-import { submitAndPoll, parseDikeError, feeFromXdr, formatFeeXlm } from "@/lib/stellar/transaction";
+import { parseDikeError, feeFromXdr, formatFeeXlm } from "@/lib/stellar/transaction";
+import { executeTransaction } from "@/lib/stellar/execute";
 import { parseUsdc, formatUsdc, applySlippage } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
 import { Card, CardContent } from "@/components/ui/card";
@@ -161,16 +162,18 @@ export function ChildTradeForm({ poolId, currentMarketId }: ChildTradeFormProps)
           throw new Error("Requested amount exceeds available parent credit.");
         }
         const minOut = applySlippage(BigInt(quote.amountOut), DEFAULT_SLIPPAGE_BPS).toString();
-        setTxState({ status: "building", hash: null, error: null });
-        const xdr =
-          token === "yes"
-            ? await buildAmmBuyChildYes(address, parentMarketId, parentOutcome as Outcome, poolId, rawIn, minOut, TRADE_DEADLINE_SECS)
-            : await buildAmmBuyChildNo(address, parentMarketId, parentOutcome as Outcome, poolId, rawIn, minOut, TRADE_DEADLINE_SECS);
-        setSimulatedFee(formatFeeXlm(feeFromXdr(xdr)));
-        setTxState({ status: "awaiting-signature", hash: null, error: null });
-        const signedXdr = await sign(xdr);
-        setTxState({ status: "submitting", hash: null, error: null });
-        const result = await submitAndPoll(signedXdr);
+        const result = await executeTransaction({
+          build: async () => {
+            const xdr = token === "yes"
+              ? await buildAmmBuyChildYes(address, parentMarketId, parentOutcome as Outcome, poolId, rawIn, minOut, TRADE_DEADLINE_SECS)
+              : await buildAmmBuyChildNo(address, parentMarketId, parentOutcome as Outcome, poolId, rawIn, minOut, TRADE_DEADLINE_SECS);
+            setSimulatedFee(formatFeeXlm(feeFromXdr(xdr)));
+            return xdr;
+          },
+          sign,
+          method: token === "yes" ? "buy_child_yes" : "buy_child_no",
+          onState: setTxState,
+        });
         setTxState({ status: "success", hash: result.hash, error: null });
         setAmountInput("");
         setQuote(null);

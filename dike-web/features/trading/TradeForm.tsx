@@ -15,7 +15,8 @@ import {
   buildAmmSellNo,
 } from "@/lib/contracts/clients";
 import { fetchRawPortfolio } from "@/lib/api/portfolio";
-import { submitAndPoll, parseDikeError, feeFromXdr, formatFeeXlm } from "@/lib/stellar/transaction";
+import { parseDikeError, feeFromXdr, formatFeeXlm } from "@/lib/stellar/transaction";
+import { executeTransaction } from "@/lib/stellar/execute";
 import { parseUsdc, formatUsdc, applySlippage } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
 import { Card, CardContent } from "@/components/ui/card";
@@ -144,22 +145,22 @@ export function TradeForm({ marketId, poolId, marketQuestion }: TradeFormProps) 
       try {
         const rawIn = parseUsdc(amountInput).toString();
         const minOut = applySlippage(BigInt(quote.amountOut), DEFAULT_SLIPPAGE_BPS).toString();
-        setTxState({ status: "building", hash: null, error: null });
-        let xdr: string;
-        if (side === "buy") {
-          xdr = token === "yes"
-            ? await buildAmmBuyYes(address, poolId, rawIn, minOut, TRADE_DEADLINE_SECS)
-            : await buildAmmBuyNo(address, poolId, rawIn, minOut, TRADE_DEADLINE_SECS);
-        } else {
-          xdr = token === "yes"
-            ? await buildAmmSellYes(address, poolId, rawIn, minOut, TRADE_DEADLINE_SECS)
-            : await buildAmmSellNo(address, poolId, rawIn, minOut, TRADE_DEADLINE_SECS);
-        }
-        setSimulatedFee(formatFeeXlm(feeFromXdr(xdr)));
-        setTxState({ status: "awaiting-signature", hash: null, error: null });
-        const signedXdr = await sign(xdr);
-        setTxState({ status: "submitting", hash: null, error: null });
-        const result = await submitAndPoll(signedXdr);
+        const result = await executeTransaction({
+          build: async () => {
+            const xdr = side === "buy"
+              ? token === "yes"
+                ? await buildAmmBuyYes(address, poolId, rawIn, minOut, TRADE_DEADLINE_SECS)
+                : await buildAmmBuyNo(address, poolId, rawIn, minOut, TRADE_DEADLINE_SECS)
+              : token === "yes"
+                ? await buildAmmSellYes(address, poolId, rawIn, minOut, TRADE_DEADLINE_SECS)
+                : await buildAmmSellNo(address, poolId, rawIn, minOut, TRADE_DEADLINE_SECS);
+            setSimulatedFee(formatFeeXlm(feeFromXdr(xdr)));
+            return xdr;
+          },
+          sign,
+          method: `${side}_${token}`,
+          onState: setTxState,
+        });
         setTxState({ status: "success", hash: result.hash, error: null });
         setAmountInput("");
         setQuote(null);

@@ -12,7 +12,8 @@ import {
   ammGetClaimableLpFees,
 } from "@/lib/contracts/clients";
 import { fetchRawPortfolio } from "@/lib/api/portfolio";
-import { submitAndPoll, parseDikeError, feeFromXdr, formatFeeXlm } from "@/lib/stellar/transaction";
+import { parseDikeError, feeFromXdr, formatFeeXlm } from "@/lib/stellar/transaction";
+import { executeTransaction } from "@/lib/stellar/execute";
 import { parseUsdc, formatUsdc } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
 import { Card, CardContent } from "@/components/ui/card";
@@ -82,13 +83,16 @@ export function LiquidityForm({ poolId, yesReserve, noReserve, totalLpShares }: 
     if (!address) return;
     startClaimTransition(async () => {
       try {
-        setTxState({ status: "building", hash: null, error: null });
-        const xdr = await buildAmmClaimLpFees(address, poolId);
-        setSimulatedFee(formatFeeXlm(feeFromXdr(xdr)));
-        setTxState({ status: "awaiting-signature", hash: null, error: null });
-        const signedXdr = await sign(xdr);
-        setTxState({ status: "submitting", hash: null, error: null });
-        const result = await submitAndPoll(signedXdr);
+        const result = await executeTransaction({
+          build: async () => {
+            const xdr = await buildAmmClaimLpFees(address, poolId);
+            setSimulatedFee(formatFeeXlm(feeFromXdr(xdr)));
+            return xdr;
+          },
+          sign,
+          method: "claim_lp_fees",
+          onState: setTxState,
+        });
         setTxState({ status: "success", hash: result.hash, error: null });
         refreshLpState();
         router.refresh();
@@ -103,16 +107,18 @@ export function LiquidityForm({ poolId, yesReserve, noReserve, totalLpShares }: 
     startTransition(async () => {
       try {
         const rawAmount = parseUsdc(amountInput).toString();
-        setTxState({ status: "building", hash: null, error: null });
-        const xdr =
-          mode === "add"
-            ? await buildAmmAddLiquidity(address, poolId, rawAmount)
-            : await buildAmmRemoveLiquidity(address, poolId, rawAmount);
-        setSimulatedFee(formatFeeXlm(feeFromXdr(xdr)));
-        setTxState({ status: "awaiting-signature", hash: null, error: null });
-        const signedXdr = await sign(xdr);
-        setTxState({ status: "submitting", hash: null, error: null });
-        const result = await submitAndPoll(signedXdr);
+        const result = await executeTransaction({
+          build: async () => {
+            const xdr = mode === "add"
+              ? await buildAmmAddLiquidity(address, poolId, rawAmount)
+              : await buildAmmRemoveLiquidity(address, poolId, rawAmount);
+            setSimulatedFee(formatFeeXlm(feeFromXdr(xdr)));
+            return xdr;
+          },
+          sign,
+          method: mode === "add" ? "add_liquidity" : "remove_liquidity",
+          onState: setTxState,
+        });
         setTxState({ status: "success", hash: result.hash, error: null });
         setAmountInput("");
         refreshLpState();
