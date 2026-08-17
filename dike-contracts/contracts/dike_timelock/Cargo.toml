@@ -1,0 +1,21 @@
+[package]
+name = "dike-timelock"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["lib", "cdylib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true }
+dike-types = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+dike-governance = { path = "../dike_governance" }
+market-factory = { path = "../market_factory" }
+market-registry = { path = "../market_registry" }
+fee-manager = { path = "../fee_manager" }
+council-of-dike = { path = "../council_of_dike" }

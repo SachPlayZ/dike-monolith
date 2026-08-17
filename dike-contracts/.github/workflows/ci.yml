@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Format, Check, Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check Formatting
+        run: cargo fmt --all -- --check
+
+      - name: Check Workspace
+        run: cargo check --workspace --all-targets
+
+      - name: Run Tests
+        run: cargo test --workspace
+
+      - name: Test TTL maintenance commands
+        run: |
+          bash -n scripts/maintain-contract-ttl.sh scripts/test-maintain-contract-ttl.sh
+          ./scripts/test-maintain-contract-ttl.sh
+
+      - name: Build Soroban WASM
+        run: cargo build --workspace --release --target wasm32-unknown-unknown

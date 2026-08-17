@@ -1,0 +1,24 @@
+[package]
+name = "market-factory"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["lib", "cdylib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true }
+dike-types = { workspace = true }
+dike-math = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+amm = { path = "../amm" }
+cod-oracle = { path = "../cod_oracle" }
+collateral-vault = { path = "../collateral_vault" }
+conditional-tokens = { path = "../conditional_tokens" }
+council-of-dike = { path = "../council_of_dike" }
+fee-manager = { path = "../fee_manager" }
+market-registry = { path = "../market_registry" }
