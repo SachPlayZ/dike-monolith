@@ -54,7 +54,7 @@ export interface ParsedSponsorshipTransaction {
   method: string;
   innerFee: bigint;
   resourceFee: bigint;
-  outerFee: bigint;
+  outerFee?: bigint;
 }
 
 export function publicSponsorshipError(error: unknown): {
