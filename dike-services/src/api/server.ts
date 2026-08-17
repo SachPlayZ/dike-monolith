@@ -18,6 +18,8 @@ import { MetricsStore } from "../observability/metrics.js";
 import { jsonReplacer } from "../contracts/codecs.js";
 import { eventBus } from "../observability/event-bus.js";
 import { parseAddress, parseCouncilCaseStatus, parseMarketId, parseMarketListQuery } from "./request-validation.js";
+import { registerSponsorshipRoutes } from "./sponsorship-routes.js";
+import { createFeeSponsorshipService } from "../sponsorship/factory.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -42,11 +44,21 @@ async function createServices() {
   const logger = createLogger(env);
   const manifest = await loadManifest(env);
   const db = createPgPool(env);
-  const RedisCtor = IORedis as unknown as { new (url: string): { ping: () => Promise<unknown>; quit: () => Promise<unknown> } };
+  const RedisCtor = IORedis as unknown as {
+    new (url: string): {
+      ping: () => Promise<unknown>;
+      quit: () => Promise<unknown>;
+      eval: (script: string, numberOfKeys: number, ...args: string[]) => Promise<unknown>;
+      get: (key: string) => Promise<string | null>;
+      set: (key: string, value: string, ...args: Array<string | number>) => Promise<unknown>;
+      del: (key: string) => Promise<unknown>;
+    };
+  };
   const redis = new RedisCtor(env.REDIS_URL);
   const metrics = new MetricsStore();
   const repository = new StateRepository(db);
   const contracts = new DikeContractClient(env, manifest, logger);
+  const sponsorship = createFeeSponsorshipService(env, manifest, redis, contracts.rpc);
   const reconciliation = new ReconciliationService(manifest, contracts, repository, logger, metrics);
   const indexer = new IndexerWorker(env, manifest, contracts, repository, reconciliation, logger, metrics);
   const scheduledJobs = new ScheduledJobs(
@@ -73,6 +85,7 @@ async function createServices() {
     metrics,
     repository,
     contracts,
+    sponsorship,
     reconciliation,
     indexer,
     scheduledJobs,
@@ -94,6 +107,7 @@ export async function buildApp() {
     timeWindow: "1 minute",
   });
   await app.register(sensible);
+  registerSponsorshipRoutes(app as unknown as import("fastify").FastifyInstance, services.sponsorship);
 
   app.addHook("preHandler", async (request, reply) => {
     const path = request.routeOptions.url;

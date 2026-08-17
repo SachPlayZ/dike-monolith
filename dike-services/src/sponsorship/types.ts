@@ -76,3 +76,13 @@ export function publicSponsorshipError(error: unknown): {
     retryable: true,
   };
 }
+
+export function sponsorshipHttpStatus(code: SponsorshipCode) {
+  if (code === "SPONSORSHIP_DISABLED") return 503;
+  if (code === "QUOTA_EXCEEDED" || code === "BUDGET_EXCEEDED") return 429;
+  if (code === "TRANSACTION_REPLAY") return 409;
+  if (code === "RPC_REJECTED") return 502;
+  if (code === "CONFIRMATION_TIMEOUT") return 504;
+  if (code === "TRANSACTION_FAILED") return 422;
+  return 400;
+}
