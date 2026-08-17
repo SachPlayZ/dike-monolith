@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./dike-web/app/android-chrome-512x512.png" alt="Dike Protocol logo" width="96" />
+  <img src="dike-web/app/android-chrome-512x512.png" alt="Dike Protocol logo" width="96" />
 
   # Dike Protocol
 
