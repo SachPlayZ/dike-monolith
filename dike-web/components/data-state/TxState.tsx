@@ -15,6 +15,7 @@ const STATUS_LABELS: Record<string, string> = {
   building: "Building transaction…",
   simulating: "Simulating…",
   "awaiting-signature": "Waiting for wallet signature…",
+  sponsoring: "Submitting through Dike fee sponsor…",
   submitting: "Submitting to network…",
   pending: "Pending confirmation…",
   success: "Transaction confirmed.",

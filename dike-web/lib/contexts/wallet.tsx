@@ -30,7 +30,7 @@ interface WalletContextType {
   permissionsLoading: boolean;
   connect: () => Promise<void>;
   disconnect: () => void;
-  sign: (xdr: string) => Promise<string>;
+  sign: (xdr: string, options?: { sponsored?: boolean; method?: string }) => Promise<string>;
 }
 
 const WalletContext = createContext<WalletContextType | null>(null);
@@ -110,7 +110,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const sign = useCallback(
-    async (xdr: string): Promise<string> => {
+    async (xdr: string, options?: { sponsored?: boolean; method?: string }): Promise<string> => {
       if (!address) throw new Error("Wallet not connected");
       assertValidConfiguration();
 
@@ -127,9 +127,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         );
       }
 
-      const maximumFee = formatFeeXlm(feeFromXdr(xdr));
+      const sponsored = options?.sponsored === true;
+      const maximumFee = sponsored ? "0 XLM (paid by Dike sponsor)" : formatFeeXlm(feeFromXdr(xdr));
+      const methodLabel = options?.method ? `\nContract action: ${options.method}` : "";
       const approved = window.confirm(
-        `Review transaction before opening your wallet\n\nNetwork: ${networkConfig.label}\nDeclared maximum network fee: ${maximumFee}\n\nThe network normally refunds unused fee. Continue to wallet signing?`,
+        `Review transaction before opening your wallet\n\nNetwork: ${networkConfig.label}${methodLabel}\nYour wallet network fee: ${maximumFee}\n\nAsset transfers, bonds, and liquidity amounts still require your approval. Continue to wallet signing?`,
       );
       if (!approved) throw new Error("Transaction signing cancelled.");
 

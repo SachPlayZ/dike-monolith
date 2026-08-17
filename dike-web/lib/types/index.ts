@@ -187,6 +187,7 @@ export type TxStatus =
   | "building"
   | "simulating"
   | "awaiting-signature"
+  | "sponsoring"
   | "submitting"
   | "pending"
   | "success"
