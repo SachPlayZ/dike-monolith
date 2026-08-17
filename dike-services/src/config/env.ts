@@ -52,7 +52,7 @@ const envSchema = z.object({
   FEE_SPONSOR_MAX_PER_IP_MINUTE: z.coerce.number().int().positive().default(30),
   FEE_SPONSOR_DAILY_BUDGET_STROOPS: stroops("100000000"),
   FEE_SPONSOR_REPLAY_TTL_SECONDS: z.coerce.number().int().positive().default(900),
-  FEE_SPONSOR_LOCK_TTL_SECONDS: z.coerce.number().int().positive().default(30),
+  FEE_SPONSOR_LOCK_TTL_SECONDS: z.coerce.number().int().positive().default(180),
   FEE_SPONSOR_CONFIRMATION_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(120),
 });
 
@@ -72,6 +72,9 @@ export function loadEnv(): Env {
 
   if (env.FEE_SPONSOR_ENABLED && !env.FEE_SPONSOR_SEED) {
     throw new Error("FEE_SPONSOR_SEED is required when fee sponsorship is enabled.");
+  }
+  if (env.FEE_SPONSOR_ENABLED && env.FEE_SPONSOR_LOCK_TTL_SECONDS < env.FEE_SPONSOR_CONFIRMATION_TIMEOUT_SECONDS) {
+    throw new Error("FEE_SPONSOR_LOCK_TTL_SECONDS must cover the confirmation timeout.");
   }
 
   return env as Env;

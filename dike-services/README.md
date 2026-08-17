@@ -4,6 +4,11 @@ The backend indexing and query layer for [Dike Protocol](https://github.com/Dike
 
 This service polls Stellar RPC for Soroban contract events, indexes them into PostgreSQL, runs periodic reconciliation jobs against on-chain state, and exposes a read-only REST API consumed by `dike-web`.
 
+It also exposes an opt-in fee-sponsorship endpoint. The browser supplies a
+wallet-signed Dike Soroban transaction; the service validates it and submits a
+Stellar fee-bump transaction signed by the sponsor account. The sponsor seed is
+server-only and must be injected at runtime.
+
 ## Architecture
 
 ```
@@ -138,6 +143,15 @@ npm run start:prod   # runs migrate:prod then starts the compiled server
 | `INDEXER_LEDGER_WINDOW` | `250` | Max ledgers fetched per poll |
 | `RECONCILIATION_INTERVAL_MS` | `60000` | How often reconciliation runs |
 | `INDEXER_LAG_ALERT_THRESHOLD` | `50` | Ledger lag before flagging in metrics |
+| `FEE_SPONSOR_ENABLED` | `false` | Enable fee-bump sponsorship |
+| `FEE_SPONSOR_SEED` | — | Runtime-only sponsor secret seed; never commit or log |
+| `FEE_SPONSOR_BASE_FEE_STROOPS` | `2000000` | Sponsor inclusion bid per operation |
+| `FEE_SPONSOR_MAX_TOTAL_FEE_STROOPS` | `10000000` | Maximum declared outer fee |
+| `FEE_SPONSOR_MAX_RESOURCE_FEE_STROOPS` | `8000000` | Maximum Soroban resource fee |
+| `FEE_SPONSOR_MAX_PER_MINUTE` | `10` | Per-source transaction quota |
+| `FEE_SPONSOR_MAX_PER_IP_MINUTE` | `30` | Per-IP transaction quota |
+| `FEE_SPONSOR_DAILY_BUDGET_STROOPS` | `100000000` | Conservative daily declared-fee budget |
+| `FEE_SPONSOR_LOCK_TTL_SECONDS` | `180` | Replay lock; must cover confirmation timeout |
 
 > [!IMPORTANT]
 > The service refuses to start if `STELLAR_NETWORK_PASSPHRASE` does not match the expected passphrase for the configured `STELLAR_NETWORK`. Set `INDEXER_START_LEDGER` before the first run against an empty database — Stellar RPC only retains recent event history and cannot backfill from ledger 1.
@@ -152,7 +166,35 @@ Service liveness, PostgreSQL, Redis, and Stellar RPC connectivity, plus indexer 
 
 ### `GET /metrics`
 
-Internal counters: event processing failures, RPC errors, reconciliation mismatches, and indexer lag.
+Internal counters: event processing failures, RPC errors, reconciliation mismatches, indexer lag, and sponsorship outcomes/spend.
+
+### `GET /sponsorship/status`
+
+Returns whether sponsorship is enabled and available, the selected network,
+sponsor public address, and public fee limits. It never returns the sponsor
+seed or account balance.
+
+### `POST /sponsorship/transactions`
+
+Accepts `{ "signedTransactionXdr": "..." }`. The source signature, Soroban
+operation, deployment contract/method allowlist, fee caps, Redis quotas, daily
+budget, and replay lock are checked before the outer fee-bump is signed.
+
+### Sponsorship smoke test
+
+Start Redis, PostgreSQL, the selected Stellar RPC, and the service with a funded
+testnet sponsor. Obtain a wallet-signed, assembled Dike inner XDR, then run:
+
+```bash
+SPONSOR_SMOKE_SERVICE_URL=http://localhost:4000 \
+SPONSOR_SMOKE_SIGNED_INNER_XDR='AAAA...' \
+npm run sponsorship:smoke
+```
+
+Verify the returned outer hash in Stellar Expert/RPC: the inner source and
+signature must remain the user's, while the fee source is the sponsor. Retry
+the same XDR to verify replay idempotency. Disable `FEE_SPONSOR_ENABLED` to
+roll back; rotate the runtime seed and re-fund only after testnet validation.
 
 ### `GET /markets`
 

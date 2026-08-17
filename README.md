@@ -26,7 +26,7 @@ Dike is a modular, collateral-backed prediction-market protocol. Users can creat
 - **Optimistic resolution** — anyone can request resolution, a proposer posts a bonded outcome, and undisputed cases finalize after a dispute window.
 - **Council escalation** — disputed outcomes enter a whitelisted commit-reveal Council of Dike vote.
 - **Indexed read model** — a replay-safe Soroban event indexer and reconciliation jobs expose query-ready state.
-- **Wallet-native web app** — read paths use the backend API; write paths build, simulate, sign, submit, and poll Soroban transactions in the user's wallet.
+- **Wallet-native web app** — read paths use the backend API; write paths build and simulate Soroban transactions in the browser, then either submit directly or use the backend's opt-in fee-bump sponsor after the user's wallet signature.
 
 ## Level 6 readiness
 

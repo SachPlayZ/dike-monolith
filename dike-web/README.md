@@ -21,7 +21,7 @@ Wallet (Freighter) ──sign──► lib/stellar/transaction.ts ──submit�
 
 **Read path:** pages call `lib/api` helpers, which hit `dike-services` through a same-origin proxy (`app/api/proxy/[...path]/route.ts` rewrites to `NEXT_PUBLIC_DIKE_SERVICES_URL`), and normalize responses via `lib/api/normalizers.ts`.
 
-**Write path:** feature components build an unsigned transaction (`lib/contracts/clients.ts`), request a wallet signature (`lib/contexts/wallet.tsx`), then submit + poll via `lib/stellar/transaction.ts`. Contract errors are decoded through `DIKE_ERROR_MAP`, which must stay in sync with `dike_types::DikeError` in `dike-contracts`.
+**Write path:** feature components build an assembled transaction (`lib/contracts/clients.ts`), request a wallet signature (`lib/contexts/wallet.tsx`), then use `lib/stellar/execute.ts`. When `dike-services` sponsorship is available, the signed inner XDR is sent to the fee-bump endpoint and the sponsor pays the network fee; when sponsorship is explicitly disabled, the app submits directly. Contract errors are decoded through `DIKE_ERROR_MAP`, which must stay in sync with `dike_types::DikeError` in `dike-contracts`.
 
 ## Routes
 
@@ -59,6 +59,10 @@ Requires a running `dike-services` instance (defaults to `http://localhost:4000`
 | `NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE` | Must match the configured network |
 | `NEXT_PUBLIC_DIKE_SERVICES_URL` | `dike-services` base URL, proxied at `/api/proxy/*` |
 | `NEXT_PUBLIC_DIKE_MANIFEST_NETWORK` | `testnet` or `mainnet` — selects which manifest `lib/contracts/manifest.ts` reads contract IDs from |
+
+Fee sponsorship is controlled server-side by `dike-services`. The browser never
+receives the sponsor seed. A sponsored transaction still requires the user's
+wallet signature and any asset, bond, reserve, or contract authorization.
 
 Contract IDs come from `lib/contracts/testnet.json` and `lib/contracts/mainnet.json`, copies of `dike-contracts/deployments/<network>.json`. Keep them in sync manually after any contract redeploy — there is no build-time fetch or symlink.
 

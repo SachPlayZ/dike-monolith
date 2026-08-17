@@ -18,7 +18,8 @@
     "test:watch": "vitest",
     "migrate": "tsx src/db/run-migrations.ts",
     "migrate:prod": "node dist/src/db/run-migrations.js",
-    "bindings:generate": "tsx scripts/generate-bindings.ts"
+    "bindings:generate": "tsx scripts/generate-bindings.ts",
+    "sponsorship:smoke": "tsx scripts/smoke-fee-sponsorship.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",

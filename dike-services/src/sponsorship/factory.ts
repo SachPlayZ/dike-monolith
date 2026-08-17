@@ -26,8 +26,8 @@ export function createFeeSponsorshipService(
   metrics?: MetricsStore,
   logger?: Logger,
 ) {
-  const signer = env.FEE_SPONSOR_SEED
-    ? createSeedSponsorSigner(env.FEE_SPONSOR_SEED)
+  const signer = env.FEE_SPONSOR_ENABLED
+    ? createSeedSponsorSigner(env.FEE_SPONSOR_SEED as string)
     : disabledSigner();
   return new FeeSponsorshipService({
     enabled: env.FEE_SPONSOR_ENABLED,
