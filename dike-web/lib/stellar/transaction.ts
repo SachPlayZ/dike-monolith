@@ -72,12 +72,31 @@ export function verifyNetwork(walletNetwork: string) {
   }
 }
 
+export type TransactionFeeMode = "direct" | "sponsored";
+
+export function parseTransactionXdr(xdr: string): StellarSdk.Transaction | StellarSdk.FeeBumpTransaction {
+  return StellarSdk.TransactionBuilder.fromXDR(xdr, networkConfig.networkPassphrase);
+}
+
 export function feeFromXdr(xdr: string): string {
-  const tx = StellarSdk.TransactionBuilder.fromXDR(
-    xdr,
-    networkConfig.networkPassphrase
-  ) as StellarSdk.Transaction;
+  const tx = parseTransactionXdr(xdr);
   return String(tx.fee);
+}
+
+export function walletFeeFromXdr(xdr: string, sponsored: boolean): string {
+  return sponsored ? "0" : feeFromXdr(xdr);
+}
+
+export function sponsorMaximumFeeFromXdr(xdr: string): string {
+  const tx = parseTransactionXdr(xdr);
+  if (tx instanceof StellarSdk.FeeBumpTransaction) return tx.fee;
+  let resourceFee = 0n;
+  try {
+    resourceFee = BigInt(tx.toEnvelope().v1().tx().ext().sorobanData().resourceFee().toString());
+  } catch {
+    // Classic transactions have no Soroban resource fee.
+  }
+  return (BigInt(String(StellarSdk.BASE_FEE)) * 2n + resourceFee).toString();
 }
 
 export function formatFeeXlm(stroops: string | number | bigint): string {
@@ -107,21 +126,23 @@ export function formatFeeXlm(stroops: string | number | bigint): string {
 // balance to cover the full declared ceiling, not just the eventual actual
 // charge) — fine for wallets funding real bonds/liquidity, but would need
 // lowering if this ever signs from a near-empty wallet.
-const INCLUSION_FEE_CEILING_STROOPS = "2000000"; // 0.2 XLM ceiling, refunded to actual cost
+const INCLUSION_FEE_CEILING_STROOPS = "2000000"; // 0.2 XLM direct ceiling, refunded to actual cost
+const SPONSORED_INCLUSION_FEE_STROOPS = String(StellarSdk.BASE_FEE);
 
 // Build + simulate a Soroban contract call. Returns assembled XDR ready for signing.
 export async function buildAndSimulate(
   sourceAddress: string,
   contractId: string,
   method: string,
-  args: StellarSdk.xdr.ScVal[]
+  args: StellarSdk.xdr.ScVal[],
+  feeMode: TransactionFeeMode = "direct",
 ): Promise<string> {
   const rpc = getRpc();
   const account = await rpc.getAccount(sourceAddress);
   const contract = new StellarSdk.Contract(contractId);
 
   const tx = new StellarSdk.TransactionBuilder(account, {
-    fee: INCLUSION_FEE_CEILING_STROOPS,
+    fee: feeMode === "sponsored" ? SPONSORED_INCLUSION_FEE_STROOPS : INCLUSION_FEE_CEILING_STROOPS,
     networkPassphrase: networkConfig.networkPassphrase,
   })
     .addOperation(contract.call(method, ...args))
