@@ -4,7 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useWallet } from "@/lib/contexts/wallet";
 import { buildCloseTrading } from "@/lib/contracts/clients";
-import { submitAndPoll, parseDikeError, feeFromXdr, formatFeeXlm } from "@/lib/stellar/transaction";
+import { parseDikeError, feeFromXdr, formatFeeXlm } from "@/lib/stellar/transaction";
+import { executeTransaction } from "@/lib/stellar/execute";
 import { TxStateDisplay } from "@/components/data-state/TxState";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,13 +33,16 @@ export function CloseTradingButton({ marketId, isExpired }: CloseTradingButtonPr
     if (!address) return;
     startTransition(async () => {
       try {
-        setTxState({ status: "building", hash: null, error: null });
-        const xdr = await buildCloseTrading(address, marketId);
-        setSimulatedFee(formatFeeXlm(feeFromXdr(xdr)));
-        setTxState({ status: "awaiting-signature", hash: null, error: null });
-        const signedXdr = await sign(xdr);
-        setTxState({ status: "submitting", hash: null, error: null });
-        const result = await submitAndPoll(signedXdr);
+        const result = await executeTransaction({
+          build: async () => {
+            const xdr = await buildCloseTrading(address, marketId);
+            setSimulatedFee(formatFeeXlm(feeFromXdr(xdr)));
+            return xdr;
+          },
+          sign,
+          method: "close_trading",
+          onState: setTxState,
+        });
         setTxState({ status: "success", hash: result.hash, error: null });
         router.refresh();
       } catch (e) {

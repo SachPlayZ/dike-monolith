@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useWallet } from "@/lib/contexts/wallet";
 import { buildTimelockExecute } from "@/lib/contracts/clients";
-import { submitAndPoll, parseDikeError } from "@/lib/stellar/transaction";
+import { executeTransaction } from "@/lib/stellar/execute";
+import { parseDikeError } from "@/lib/stellar/transaction";
 
 interface GovernancePanelProps {
   state: AdminState;
@@ -157,9 +158,11 @@ function TimelockRow({ action, executable }: { action: TimelockAction; executabl
     startTransition(async () => {
       try {
         setError(null);
-        const xdr = await buildTimelockExecute(address, action.actionId);
-        const signedXdr = await sign(xdr);
-        await submitAndPoll(signedXdr);
+        await executeTransaction({
+          build: () => buildTimelockExecute(address, action.actionId),
+          sign,
+          method: "execute",
+        });
         setDone(true);
       } catch (e) {
         setError(parseDikeError(e));

@@ -9,7 +9,8 @@ import {
   buildFinalizeUndisputed,
   buildEscalateToCouncil,
 } from "@/lib/contracts/clients";
-import { submitAndPoll, parseDikeError } from "@/lib/stellar/transaction";
+import { parseDikeError } from "@/lib/stellar/transaction";
+import { executeTransaction } from "@/lib/stellar/execute";
 import { formatUsdc } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
 import { Button } from "@/components/ui/button";
@@ -57,16 +58,16 @@ export function ResolutionPanel({ market, request, onSuccess }: ResolutionPanelP
     );
   }
 
-  async function exec(buildFn: () => Promise<string>) {
+  async function exec(method: string, buildFn: () => Promise<string>) {
     if (!address) return;
     startTransition(async () => {
       try {
-        setTxState({ status: "building", hash: null, error: null });
-        const xdr = await buildFn();
-        setTxState({ status: "awaiting-signature", hash: null, error: null });
-        const signedXdr = await sign(xdr);
-        setTxState({ status: "submitting", hash: null, error: null });
-        const result = await submitAndPoll(signedXdr);
+        const result = await executeTransaction({
+          build: buildFn,
+          sign,
+          method,
+          onState: setTxState,
+        });
         setTxState({ status: "success", hash: result.hash, error: null });
         onSuccess?.();
       } catch (e) {
@@ -91,7 +92,7 @@ export function ResolutionPanel({ market, request, onSuccess }: ResolutionPanelP
             size="sm"
             disabled={isPending}
             onClick={() =>
-              exec(() =>
+              exec("request_resolution", () =>
                 buildRequestResolution(
                   address!,
                   market.marketId,
@@ -120,7 +121,7 @@ export function ResolutionPanel({ market, request, onSuccess }: ResolutionPanelP
             size="sm"
             disabled={isPending || Boolean(evidenceError)}
             onClick={() =>
-              exec(() => buildProposeOutcome(address!, request.requestId, selectedOutcome, evidenceUri))
+              exec("propose_outcome", () => buildProposeOutcome(address!, request.requestId, selectedOutcome, evidenceUri))
             }
           >
             Propose {selectedOutcome}
@@ -153,7 +154,7 @@ export function ResolutionPanel({ market, request, onSuccess }: ResolutionPanelP
                       variant="destructive"
                       disabled={isPending || Boolean(evidenceError)}
                       onClick={() =>
-                        exec(() =>
+                        exec("dispute_outcome", () =>
                           buildDisputeOutcome(address!, request.requestId, selectedOutcome, evidenceUri)
                         )
                       }
@@ -169,7 +170,7 @@ export function ResolutionPanel({ market, request, onSuccess }: ResolutionPanelP
                     disabled={isPending}
                     onClick={() =>
                       window.confirm("Finalize this undisputed outcome? This action is irreversible.")
-                        ? exec(() => buildFinalizeUndisputed(address!, request.requestId))
+                        ? exec("finalize_undisputed", () => buildFinalizeUndisputed(address!, request.requestId))
                         : undefined
                     }
                   >
@@ -192,7 +193,7 @@ export function ResolutionPanel({ market, request, onSuccess }: ResolutionPanelP
             disabled={isPending}
             onClick={() =>
               window.confirm("Escalate this disputed market to Council of Dike? This cannot be undone.")
-                ? exec(() => buildEscalateToCouncil(address!, request.requestId))
+                ? exec("escalate_to_council", () => buildEscalateToCouncil(address!, request.requestId))
                 : undefined
             }
           >

@@ -7,7 +7,8 @@ import { cn } from "@/lib/utils";
 import { useWallet } from "@/lib/contexts/wallet";
 import { fetchMarkets } from "@/lib/api/markets";
 import { vaultGetAccounting, buildSweepProtocolFees } from "@/lib/contracts/clients";
-import { submitAndPoll, parseDikeError, feeFromXdr, formatFeeXlm } from "@/lib/stellar/transaction";
+import { parseDikeError, feeFromXdr, formatFeeXlm } from "@/lib/stellar/transaction";
+import { executeTransaction } from "@/lib/stellar/execute";
 import { formatUsdc } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
 import { Card } from "@/components/ui/card";
@@ -87,13 +88,16 @@ export function SweepProtocolFeesPanel({ variant }: SweepProtocolFeesPanelProps)
     setSweepingId(marketId);
     startTransition(async () => {
       try {
-        setTxState({ status: "building", hash: null, error: null });
-        const xdr = await buildSweepProtocolFees(address, marketId);
-        setSimulatedFee(formatFeeXlm(feeFromXdr(xdr)));
-        setTxState({ status: "awaiting-signature", hash: null, error: null });
-        const signedXdr = await sign(xdr);
-        setTxState({ status: "submitting", hash: null, error: null });
-        const result = await submitAndPoll(signedXdr);
+        const result = await executeTransaction({
+          build: async () => {
+            const xdr = await buildSweepProtocolFees(address, marketId);
+            setSimulatedFee(formatFeeXlm(feeFromXdr(xdr)));
+            return xdr;
+          },
+          sign,
+          method: "sweep_protocol_fees",
+          onState: setTxState,
+        });
         setTxState({ status: "success", hash: result.hash, error: null });
         await loadFees();
         router.refresh();

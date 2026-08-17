@@ -53,6 +53,7 @@ function makeService(enabled = true) {
     request,
     service: new FeeSponsorshipService({
       enabled,
+      network: "testnet",
       networkPassphrase: StellarSdk.Networks.TESTNET,
       contracts,
       feePolicy: { baseFeeStroops: "2000000", maxTotalFeeStroops: "10000000", maxResourceFeeStroops: "8000000" },

@@ -7,7 +7,8 @@ import {
   buildRedeemCancelled,
   ctBalance,
 } from "@/lib/contracts/clients";
-import { submitAndPoll, parseDikeError, feeFromXdr, formatFeeXlm } from "@/lib/stellar/transaction";
+import { parseDikeError, feeFromXdr, formatFeeXlm } from "@/lib/stellar/transaction";
+import { executeTransaction } from "@/lib/stellar/execute";
 import { formatUsdc } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
 import { Button } from "@/components/ui/button";
@@ -46,18 +47,18 @@ export function RedeemForm({ position, onSuccess }: RedeemFormProps) {
         if (!window.confirm(`Redeem ${formatUsdc(BigInt(liveBalance))} ${outcome.toUpperCase()} from this market? This cannot be undone.`)) {
           return;
         }
-        setTxState({ status: "building", hash: null, error: null });
-
-        const xdr = isResolved
-          ? await buildRedeemResolved(address, position.marketId, outcome, liveBalance)
-          : await buildRedeemCancelled(address, position.marketId, outcome, liveBalance);
-
-        setSimulatedFee(formatFeeXlm(feeFromXdr(xdr)));
-        setTxState({ status: "awaiting-signature", hash: null, error: null });
-        const signedXdr = await sign(xdr);
-
-        setTxState({ status: "submitting", hash: null, error: null });
-        const result = await submitAndPoll(signedXdr);
+        const result = await executeTransaction({
+          build: async () => {
+            const xdr = isResolved
+              ? await buildRedeemResolved(address, position.marketId, outcome, liveBalance)
+              : await buildRedeemCancelled(address, position.marketId, outcome, liveBalance);
+            setSimulatedFee(formatFeeXlm(feeFromXdr(xdr)));
+            return xdr;
+          },
+          sign,
+          method: isResolved ? "redeem_resolved" : "redeem_cancelled",
+          onState: setTxState,
+        });
 
         setTxState({ status: "success", hash: result.hash, error: null });
         onSuccess?.();

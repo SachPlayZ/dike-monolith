@@ -9,7 +9,8 @@ import {
   buildFinalizeCase,
   buildClaimReward,
 } from "@/lib/contracts/clients";
-import { submitAndPoll, parseDikeError, feeFromXdr, formatFeeXlm } from "@/lib/stellar/transaction";
+import { parseDikeError, feeFromXdr, formatFeeXlm } from "@/lib/stellar/transaction";
+import { executeTransaction } from "@/lib/stellar/execute";
 import { fromScVal, formatUsdc } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
 import { Button } from "@/components/ui/button";
@@ -79,17 +80,20 @@ export function VoteForm({ councilCase, onSuccess }: VoteFormProps) {
     );
   }
 
-  async function exec(buildFn: () => Promise<string>) {
+  async function exec(method: string, buildFn: () => Promise<string>) {
     if (!address) return;
     startTransition(async () => {
       try {
-        setTxState({ status: "building", hash: null, error: null });
-        const xdr = await buildFn();
-        setSimulatedFee(formatFeeXlm(feeFromXdr(xdr)));
-        setTxState({ status: "awaiting-signature", hash: null, error: null });
-        const signedXdr = await sign(xdr);
-        setTxState({ status: "submitting", hash: null, error: null });
-        const result = await submitAndPoll(signedXdr);
+        const result = await executeTransaction({
+          build: async () => {
+            const xdr = await buildFn();
+            setSimulatedFee(formatFeeXlm(feeFromXdr(xdr)));
+            return xdr;
+          },
+          sign,
+          method,
+          onState: setTxState,
+        });
         setTxState({ status: "success", hash: result.hash, error: null });
         onSuccess?.();
       } catch (e) {
@@ -111,7 +115,7 @@ export function VoteForm({ councilCase, onSuccess }: VoteFormProps) {
     const pending = { outcome: selectedOutcome, salt, commitment, caseId: councilCase.caseId };
     localStorage.setItem(PENDING_KEY(address, councilCase.caseId), JSON.stringify(pending));
 
-    await exec(() => buildCommitVote(address, councilCase.caseId, commitment));
+    await exec("commit_vote", () => buildCommitVote(address, councilCase.caseId, commitment));
     toast("Salt saved to browser", {
       description: `Keep it safe — needed to reveal. Salt: ${salt}`,
       duration: 15000,
@@ -122,12 +126,12 @@ export function VoteForm({ councilCase, onSuccess }: VoteFormProps) {
     if (!address) return;
     startTransition(async () => {
       try {
-        setTxState({ status: "building", hash: null, error: null });
-        const xdr = await buildClaimReward(address, councilCase.caseId);
-        setTxState({ status: "awaiting-signature", hash: null, error: null });
-        const signedXdr = await sign(xdr);
-        setTxState({ status: "submitting", hash: null, error: null });
-        const result = await submitAndPoll(signedXdr);
+        const result = await executeTransaction({
+          build: () => buildClaimReward(address, councilCase.caseId),
+          sign,
+          method: "claim_reward",
+          onState: setTxState,
+        });
         setTxState({ status: "success", hash: result.hash, error: null });
         if (result.returnValue) {
           const [correct, payout] = fromScVal(result.returnValue) as [boolean, bigint];
@@ -224,7 +228,7 @@ export function VoteForm({ councilCase, onSuccess }: VoteFormProps) {
               className="w-full"
               size="sm"
               onClick={() =>
-                exec(() => buildRevealVote(address!, councilCase.caseId, selectedOutcome, revealSalt))
+                exec("reveal_vote", () => buildRevealVote(address!, councilCase.caseId, selectedOutcome, revealSalt))
               }
               disabled={isPending || !revealSalt}
             >
@@ -241,7 +245,7 @@ export function VoteForm({ councilCase, onSuccess }: VoteFormProps) {
             <Button
               className="w-full"
               size="sm"
-              onClick={() => exec(() => buildFinalizeCase(address!, councilCase.caseId))}
+              onClick={() => exec("finalize_and_report_case", () => buildFinalizeCase(address!, councilCase.caseId))}
               disabled={isPending}
             >
               {isPending ? "Processing…" : "Finalize and Report"}

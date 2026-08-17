@@ -10,7 +10,8 @@ import {
   feeManagerGetConfig,
   type CreateMarketParams,
 } from "@/lib/contracts/clients";
-import { submitAndPoll, parseDikeError } from "@/lib/stellar/transaction";
+import { parseDikeError } from "@/lib/stellar/transaction";
+import { executeTransaction } from "@/lib/stellar/execute";
 import { parseUsdc, formatUsdc } from "@/lib/stellar/scval";
 import { TxStateDisplay } from "@/components/data-state/TxState";
 import { EmptyState } from "@/components/data-state/EmptyState";
@@ -157,18 +158,12 @@ export default function CreateMarketPage() {
         };
         const initialLiquidity = parseUsdc(form.initialLiquidity).toString();
 
-        const xdr = await buildCreateMarket(
-          address,
-          params,
-          initialLiquidity,
-          OPENING_PRICE_BPS,
-        );
-
-        setTxState({ status: "awaiting-signature", hash: null, error: null });
-        const signedXdr = await sign(xdr);
-
-        setTxState({ status: "submitting", hash: null, error: null });
-        const result = await submitAndPoll(signedXdr);
+        const result = await executeTransaction({
+          build: () => buildCreateMarket(address, params, initialLiquidity, OPENING_PRICE_BPS),
+          sign,
+          method: "create_market",
+          onState: setTxState,
+        });
 
         const explorerUrl = `https://stellar.expert/explorer/${networkConfig.explorerNetwork}/tx/${result.hash}`;
         toast.success("Market Created", {
