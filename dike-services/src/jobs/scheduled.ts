@@ -1,0 +1,125 @@
+import type { Env } from "../config/env.js";
+import type { StateRepository } from "../db/repositories/state-repository.js";
+import type { ReconciliationService } from "./reconciliation.js";
+import type { DikeContractClient } from "../contracts/client.js";
+import type { Logger } from "../observability/logger.js";
+
+export class ScheduledJobs {
+  private timer: NodeJS.Timeout | undefined;
+  private running = false;
+
+  constructor(
+    private readonly env: Env,
+    private readonly network: string,
+    private readonly repository: StateRepository,
+    private readonly reconciliation: ReconciliationService,
+    private readonly contracts: DikeContractClient,
+    private readonly logger: Logger,
+  ) {}
+
+  start() {
+    if (this.timer) {
+      return;
+    }
+    this.timer = setInterval(() => {
+      void this.tick();
+    }, this.env.RECONCILIATION_INTERVAL_MS);
+    void this.tick();
+  }
+
+  stop() {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = undefined;
+    }
+  }
+
+  async tick() {
+    if (this.running) {
+      return;
+    }
+    this.running = true;
+    try {
+      const latestLedger = await this.contracts.getLatestLedger();
+      await this.safeStep({ scope: "governance" }, () =>
+        this.reconciliation.reconcileGovernance(latestLedger.sequence),
+      );
+
+      const knownMarketIds = await this.repository.listKnownMarketIds(this.network);
+      const marketIds = await this.discoverMarketIds(knownMarketIds);
+      const marketPools = await this.repository.listKnownMarketPools(this.network);
+      const poolByMarket = new Map(marketPools.map(({ marketId, poolId }) => [marketId, poolId]));
+
+      for (const marketId of marketIds) {
+        await this.safeStep({ scope: "market", marketId }, () =>
+          this.reconciliation.reconcileMarket(marketId, latestLedger.sequence),
+        );
+        await this.safeStep({ scope: "vault", marketId }, () =>
+          this.reconciliation.reconcileVault(marketId, latestLedger.sequence),
+        );
+
+        const positionOwners = await this.repository.listKnownPositionOwners(this.network, marketId);
+        for (const owner of positionOwners) {
+          await this.safeStep({ scope: "user_position", marketId, owner }, () =>
+            this.reconciliation.reconcileUserPosition(marketId, owner, latestLedger.sequence),
+          );
+        }
+        for (const owner of positionOwners) {
+          await this.safeStep({ scope: "user_vault_state", marketId, owner }, () =>
+            this.reconciliation.reconcileUserVaultState(marketId, owner, latestLedger.sequence),
+          );
+        }
+
+        const poolId = poolByMarket.get(marketId);
+        if (poolId !== undefined) {
+          const lpOwners = await this.repository.listKnownLpOwners(this.network, poolId);
+          for (const owner of lpOwners) {
+            await this.safeStep({ scope: "lp_position", marketId, poolId, owner }, () =>
+              this.reconciliation.reconcileLpPosition(poolId, owner, latestLedger.sequence),
+            );
+          }
+        }
+      }
+
+      const timelockActionIds = await this.repository.listKnownTimelockActionIds(this.network);
+      for (const actionId of timelockActionIds) {
+        await this.safeStep({ scope: "timelock_action", actionId }, () =>
+          this.reconciliation.reconcileTimelockAction(actionId, latestLedger.sequence),
+        );
+      }
+    } catch (error) {
+      this.logger.error({ error }, "Scheduled reconciliation failed");
+    } finally {
+      this.running = false;
+    }
+  }
+
+  private async safeStep(context: Record<string, unknown>, step: () => Promise<unknown>) {
+    try {
+      await step();
+    } catch (error) {
+      this.logger.error({ error, ...context }, "Reconciliation step failed; continuing with remaining items");
+    }
+  }
+
+  private async discoverMarketIds(knownMarketIds: number[]) {
+    try {
+      const nextMarketId = Number(await this.contracts.getNextMarketId());
+      if (!Number.isSafeInteger(nextMarketId) || nextMarketId < 1) {
+        throw new Error(`Invalid next market id: ${nextMarketId}`);
+      }
+
+      const marketIds = new Set(knownMarketIds);
+      for (let marketId = 1; marketId < nextMarketId; marketId += 1) {
+        marketIds.add(marketId);
+      }
+      return [...marketIds];
+    } catch (error) {
+      this.logger.error(
+        { error, scope: "market_discovery" },
+        "Unable to discover markets from factory counter; reconciling known markets only",
+      );
+      return knownMarketIds;
+    }
+  }
+}

@@ -1,0 +1,5 @@
+ALTER TABLE trades
+  ADD COLUMN IF NOT EXISTS event_id TEXT;
+
+ALTER TABLE liquidity_events
+  ADD COLUMN IF NOT EXISTS event_id TEXT;
